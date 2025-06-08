@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+.venv/
+ENV/
+env/
+ENV/
+
+# Environment variables
+.env
+
+# Project specific
+downloads/
+extracted_audio.m4a
+
+# IDE / Editor specific
+.vscode/
+.idea/
+*.DS_Store
