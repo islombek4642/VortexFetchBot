@@ -1,4 +1,9 @@
-# This file tells Railway to install system-level packages.
+# This file tells Railway to install system-level packages and configure providers.
+
+[providers]
+# Specify the Python version to ensure the 'python' command is available during build.
+python = "3.10"
+
 [phases.setup]
 # We need ffmpeg for audio processing.
 nixPkgs = ["ffmpeg"]
