@@ -263,12 +263,17 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         song_download_command = [
             'yt-dlp',
             '--quiet',
+            '--no-warnings',
+            '--geo-bypass',
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
             '--extract-audio',
             '--audio-format', 'mp3',
+            '--audio-quality', '0', # Best quality
             '-o', song_output_template,
-            '--max-filesize', '20m', # Limit song download size too
-            f'ytsearch1:{search_query}' # Search and pick the first result
+            '--max-filesize', '20m',
+            '--no-playlist',
+            '--no-check-certificate',
+            f'ytsearch1:{search_query}'
         ]
 
         try:
