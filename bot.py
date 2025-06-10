@@ -66,7 +66,8 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Use yt-dlp to download the video
     # We'll try to get the best quality video that's under a reasonable size limit (e.g., 50MB for Telegram)
     # The filename will be based on the video title
-    output_template = os.path.join(DOWNLOAD_PATH, '%(title)s.%(ext)s')
+    # Make filename unique to this request to avoid race conditions
+    output_template = os.path.join(DOWNLOAD_PATH, f'{update.update_id}_%(title)s.%(ext)s')
     command = [
         'yt-dlp',
         '-f', 'bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]/best',
@@ -92,10 +93,11 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             # but that requires another call or more complex parsing.
             # Let's try to find the file based on the output template structure.
             
+            # Find the file that was just downloaded for this specific request
             downloaded_files = []
+            request_file_prefix = str(update.update_id)
             for f in os.listdir(DOWNLOAD_PATH):
-                # This is a heuristic. A better way would be to get the exact filename from yt-dlp output.
-                if f.endswith('.mp4'): # Assuming mp4 output
+                if f.startswith(request_file_prefix) and f.endswith('.mp4'):
                     downloaded_files.append(os.path.join(DOWNLOAD_PATH, f))
             
             if not downloaded_files:
@@ -155,7 +157,8 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def recognize_and_offer_song_download(update: Update, context: ContextTypes.DEFAULT_TYPE, video_filepath: str) -> Optional[InlineKeyboardMarkup]:
     """Extracts audio, recognizes song, and offers download if found."""
     chat_id = update.message.chat_id
-    audio_extraction_path = os.path.join(DOWNLOAD_PATH, 'extracted_audio.m4a') # yt-dlp prefers m4a for audio usually
+    # Make filename unique to avoid race conditions
+    audio_extraction_path = os.path.join(DOWNLOAD_PATH, f'{update.update_id}_extracted_audio.m4a')
 
     try:
         # 1. Extract audio from the video
@@ -254,7 +257,8 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         # Send a new message to show that we are processing the request
         status_message = await context.bot.send_message(chat_id=query.message.chat_id, text=f"Searching for '{search_query}' to download...")
         
-        song_output_template = os.path.join(DOWNLOAD_PATH, '%(title)s_audio.%(ext)s')
+        # Make filename unique to this request to avoid race conditions
+        song_output_template = os.path.join(DOWNLOAD_PATH, f'{query.update_id}_%(title)s_audio.%(ext)s')
         # Use yt-dlp to search and download the best audio
         # ytsearch: will search on youtube (default) / youtube music
         # -x for extract audio, --audio-format mp3 for mp3 output
@@ -278,9 +282,11 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             stdout, stderr = process.communicate()
 
             if process.returncode == 0:
+                # Find the song file that was just downloaded for this specific request
                 downloaded_songs = []
+                request_file_prefix = str(query.update_id)
                 for f in os.listdir(DOWNLOAD_PATH):
-                    if f.endswith('_audio.mp3'): # Match our output template
+                    if f.startswith(request_file_prefix) and f.endswith('_audio.mp3'): # Match our output template
                         downloaded_songs.append(os.path.join(DOWNLOAD_PATH, f))
                 
                 if not downloaded_songs:
@@ -348,20 +354,21 @@ def main() -> None:
         print("Error: TELEGRAM_BOT_TOKEN environment variable not set. Bot cannot start.")
         return
 
-    # Create the Application and pass it your bot's token.
     application = ApplicationBuilder().token(TOKEN).read_timeout(30).connect_timeout(30).write_timeout(60).build()
 
-    # on different commands - answer in Telegram
+    # Command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
 
-    # on non command i.e message - echo the message on Telegram
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
-    application.add_handler(CallbackQueryHandler(button_callback_handler)) # Add handler for button clicks
+    # Button callback handler
+    application.add_handler(CallbackQueryHandler(button_callback_handler))
 
-    logger.info("Bot starting...")
-    # Run the bot until the user presses Ctrl-C
+    # Message handler for video download
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
+
+    # Run the bot
     application.run_polling()
+
 
 if __name__ == '__main__':
     main()
