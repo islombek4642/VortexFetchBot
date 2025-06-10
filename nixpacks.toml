@@ -1,0 +1,4 @@
+# This file tells Railway to install system-level packages.
+[phases.setup]
+# We need ffmpeg for audio processing.
+nixPkgs = ["ffmpeg"]
