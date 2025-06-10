@@ -317,10 +317,11 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             else:
                 error_message = stderr.decode(errors='ignore')
                 logger.error(f"yt-dlp failed for song query: {search_query}. Error: {error_message}")
+                user_friendly_error = "Sorry, I was unable to download the song. This might be a temporary issue with the source. Please try again later."
                 if status_message:
-                    await status_message.edit_text(f"Sorry, I couldn't download the song. Error: {error_message[:1000]}")
+                    await status_message.edit_text(user_friendly_error)
                 else:
-                    await context.bot.send_message(chat_id=query.message.chat_id, text=f"Sorry, I couldn't download the song. Error: {error_message[:1000]}")
+                    await context.bot.send_message(chat_id=query.message.chat_id, text=user_friendly_error)
 
         except Exception as e:
             logger.error(f"An error occurred during song download process for {search_query}: {e}")
