@@ -273,7 +273,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             '--max-filesize', '20m',
             '--no-playlist',
             '--no-check-certificate',
-            f'ytsearch1:{search_query}'
+            f'ytmsearch1:{search_query}' # Search on YouTube Music
         ]
 
         try:
