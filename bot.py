@@ -258,13 +258,8 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         status_message = await context.bot.send_message(chat_id=query.message.chat_id, text=f"Searching for '{search_query}' to download...")
         
         # Make filename unique to this request to avoid race conditions
-        song_output_template = os.path.join(DOWNLOAD_PATH, f'{query.update_id}_%(title)s_audio.%(ext)s')
-        # Use yt-dlp to search and download the best audio
-        # ytsearch: will search on youtube (default) / youtube music
-        # -x for extract audio, --audio-format mp3 for mp3 output
-        # --default-search "ytsearch1:" to pick the first result
-        # Use ytsearch1: to automatically pick the first search result.
-        # The search query is now part of the URL, not a separate argument.
+        song_output_template = os.path.join(DOWNLOAD_PATH, f'{update.update_id}_%(title)s_audio.%(ext)s')
+        # Use yt-dlp with 'ytsearch1:' to find and download the best audio from the first search result.
         song_download_command = [
             'yt-dlp',
             '--quiet',
@@ -284,7 +279,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             if process.returncode == 0:
                 # Find the song file that was just downloaded for this specific request
                 downloaded_songs = []
-                request_file_prefix = str(query.update_id)
+                request_file_prefix = str(update.update_id)
                 for f in os.listdir(DOWNLOAD_PATH):
                     if f.startswith(request_file_prefix) and f.endswith('_audio.mp3'): # Match our output template
                         downloaded_songs.append(os.path.join(DOWNLOAD_PATH, f))
