@@ -263,18 +263,18 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         # ytsearch: will search on youtube (default) / youtube music
         # -x for extract audio, --audio-format mp3 for mp3 output
         # --default-search "ytsearch1:" to pick the first result
-            # Use ytsearch1: to automatically pick the first search result.
-            # The search query is now part of the URL, not a separate argument.
-            song_download_command = [
-                'yt-dlp',
-                '--quiet',
-                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-                '--extract-audio',
-                '--audio-format', 'mp3',
-                '-o', song_output_template,
-                '--max-filesize', '20m', # Limit song download size too
-                f'ytsearch1:{search_query}' # Search and pick the first result
-            ]
+        # Use ytsearch1: to automatically pick the first search result.
+        # The search query is now part of the URL, not a separate argument.
+        song_download_command = [
+            'yt-dlp',
+            '--quiet',
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            '--extract-audio',
+            '--audio-format', 'mp3',
+            '-o', song_output_template,
+            '--max-filesize', '20m', # Limit song download size too
+            f'ytsearch1:{search_query}' # Search and pick the first result
+        ]
 
         try:
             logger.info(f"Attempting to download song: {search_query} with command: {' '.join(song_download_command)}")
