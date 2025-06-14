@@ -26,6 +26,19 @@ TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 if not TOKEN:
     logger.error("TELEGRAM_BOT_TOKEN environment variable not set!")
     # You should exit or raise an error here if the token is critical for startup
+
+# Load YouTube cookies from environment variable and write to a file
+COOKIE_FILE_PATH = 'cookies.txt'
+YOUTUBE_COOKIES = os.getenv('YOUTUBE_COOKIES')
+if YOUTUBE_COOKIES:
+    try:
+        with open(COOKIE_FILE_PATH, 'w', encoding='utf-8') as f:
+            f.write(YOUTUBE_COOKIES)
+        logger.info("YouTube cookie fayli muhit o'zgaruvchisidan muvaffaqiyatli yaratildi.")
+    except Exception as e:
+        logger.error(f"Cookie faylini yozishda xatolik: {e}")
+else:
+    logger.warning("YOUTUBE_COOKIES muhit o'zgaruvchisi o'rnatilmagan. Yuklashlarda muammo bo'lishi mumkin.")
     # For now, we'll let it proceed but the bot won't work.
 
 DOWNLOAD_PATH = 'downloads'
@@ -74,8 +87,10 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         '--merge-output-format', 'mp4',
         '-o', output_template,
         '--max-filesize', '49m', # Telegram bot API limit is 50MB for sending files
-        url
     ]
+    if os.path.exists(COOKIE_FILE_PATH):
+        command.extend(['--cookies', COOKIE_FILE_PATH])
+    command.append(url)
 
     try:
         logger.info(f"Attempting to download: {url} with command: {' '.join(command)}")
@@ -273,8 +288,10 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             '-o', song_output_template,
             '--max-filesize', '20m',
             '--no-playlist',
-            f'ytsearch1:{search_query}'
         ]
+        if os.path.exists(COOKIE_FILE_PATH):
+            song_download_command.extend(['--cookies', COOKIE_FILE_PATH])
+        song_download_command.append(f'ytsearch1:{search_query}')
 
         try:
             logger.info(f"Attempting to download song: {search_query} with command: {' '.join(song_download_command)}")

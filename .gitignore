@@ -12,6 +12,7 @@ ENV/
 
 # Environment variables
 .env
+cookies.txt
 
 # Project specific
 downloads/
