@@ -4,10 +4,10 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# "small" modelini sinab ko'ramiz - bu aniqlik va resurslar o'rtasidagi yaxshi muvozanat.
-# Bu "base"dan aniqroq va "medium"dan kamroq resurs talab qiladi.
+# "base" modeli - eng tez va eng kam resurs talab qiladigan model.
+# Aniqligi pastroq, lekin tezkor transkripsiya uchun mos.
 # Birinchi ishga tushganda, bu modelni yuklab oladi.
-MODEL_SIZE = "small"
+MODEL_SIZE = "base"
 COMPUTE_TYPE = "int8" # CPU uchun optimizatsiya
 
 try:
@@ -54,11 +54,7 @@ async def transcribe_audio_from_file(audio_path: str) -> (str, str):
         lang_probability = info.language_probability
         logger.info(f"Aniqlangan til: {detected_language} (ehtimollik: {lang_probability:.2f})")
 
-        # Foydalanuvchi faqat ingliz va rus tillarini so'radi
-        if detected_language not in ['en', 'ru']:
-            unsupported_lang_message = f"Kechirasiz, faqat ingliz (en) va rus (ru) tillari qo'llab-quvvatlanadi. Bu audioda '{detected_language}' tili aniqlandi."
-            logger.warning(f"Qo'llab-quvvatlanmaydigan til aniqlandi: {detected_language}")
-            return None, unsupported_lang_message
+
 
         formatted_text = format_transcript(segments)
         
