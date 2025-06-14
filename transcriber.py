@@ -72,7 +72,8 @@ async def transcribe_audio_from_file(audio_path: str) -> AsyncGenerator[tuple[st
 
     try:
         audio = AudioSegment.from_file(audio_path)
-        chunk_length_ms = 45 * 1000 
+        audio = audio.set_channels(1) # Monoga o'tkazish
+        chunk_length_ms = 10 * 1000 # Bo'lak hajmini 25s ga o'zgartirish
         chunks = make_chunks(audio, chunk_length_ms)
         total_chunks = len(chunks)
 
