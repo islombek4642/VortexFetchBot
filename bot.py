@@ -93,7 +93,9 @@ async def _run_yt_dlp_with_progress(command: list, status_message: Message, prog
                     current_time = time.time()
                     
                     if percentage > last_percentage and (percentage % 5 == 0 or current_time - last_update_time > 2):
-                        await status_message.edit_text(f"{progress_text_prefix} {percentage}%")
+                        new_text = f"{progress_text_prefix} {percentage}%"
+                        if new_text != status_message.text:
+                            await status_message.edit_text(new_text)
                         last_percentage = percentage
                         last_update_time = current_time
                 except (ValueError, IndexError):
@@ -245,8 +247,10 @@ async def recognize_and_offer_song_download(status_message: Message, video_filep
         await status_message.edit_text("🎶 Videodan audio ajratib olinmoqda...")
         logger.info(f"Extracting audio from {video_filepath} to {audio_extraction_path}.")
         
+        # Use acodec='copy' to directly copy the audio stream without re-encoding, which is much faster.
+        # vn=True disables video recording.
         stream = ffmpeg.input(video_filepath)
-        stream = ffmpeg.output(stream, audio_extraction_path, acodec='aac', ar='44100', ab='192k')
+        stream = ffmpeg.output(stream, audio_extraction_path, acodec='copy', vn=True)
         await _run_ffmpeg_async(functools.partial(stream.run, overwrite_output=True, quiet=True))
 
         logger.info(f"Audio extracted successfully to {audio_extraction_path}")
