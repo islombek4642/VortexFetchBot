@@ -10,6 +10,8 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from shazamio import Shazam # For song recognition
+import ffmpeg # For audio extraction
+from transcriber import transcribe_audio_from_file # Import our new function
 
 # Enable logging
 logging.basicConfig(
@@ -367,27 +369,86 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             await context.bot.send_message(chat_id=query.message.chat_id, text="Error: Unknown action.")
 
 
+# --- Transcriber Functionality ---
 
+async def handle_media_for_transcription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles audio and video messages for transcription."""
+    message = update.message
+    file_to_download = message.audio or message.video or message.voice
 
-def main() -> None:
-    """Start the bot."""
-    if not TOKEN:
-        print("Error: TELEGRAM_BOT_TOKEN environment variable not set. Bot cannot start.")
+    if not file_to_download:
         return
 
-    application = ApplicationBuilder().token(TOKEN).read_timeout(30).connect_timeout(30).write_timeout(60).build()
+    status_message = await message.reply_text(
+        "Fayl qabul qilindi. Ovozni matnga o'girish uchun tayyorlanmoqda..."
+    )
 
-    # Command handlers
+    try:
+        file_id = file_to_download.file_id
+        file = await context.bot.get_file(file_id)
+        
+        # Faylni yuklab olish uchun unikal nom yaratish
+        downloaded_file_path = os.path.join(DOWNLOAD_PATH, f"{file_id}_{file_to_download.file_name or 'audio.ogg'}")
+        await file.download_to_drive(downloaded_file_path)
+        logger.info(f"Fayl transkripsiya uchun yuklab olindi: {downloaded_file_path}")
+
+        audio_path_to_transcribe = downloaded_file_path
+
+        # Agar video bo'lsa, audioni ajratib olish
+        if message.video:
+            await status_message.edit_text("Videodan audio ajratib olinmoqda...")
+            output_audio_path = os.path.join(DOWNLOAD_PATH, f"{file_id}_extracted_audio.mp3")
+            try:
+                ffmpeg.input(downloaded_file_path).output(output_audio_path, acodec='libmp3lame', ar='16000').run(overwrite_output=True, quiet=True)
+                audio_path_to_transcribe = output_audio_path
+                logger.info(f"Audio muvaffaqiyatli ajratib olindi: {output_audio_path}")
+            except ffmpeg.Error as e:
+                logger.error(f"ffmpeg xatosi: {e.stderr.decode() if e.stderr else 'Noma\'lum xato'}")
+                await status_message.edit_text("Videodan audioni ajratib olishda xatolik yuz berdi.")
+                return
+
+        # Transkripsiya qilish
+        await status_message.edit_text("Audio tahlil qilinmoqda... Bu bir necha daqiqa vaqt olishi mumkin.")
+        language, transcript = await transcribe_audio_from_file(audio_path_to_transcribe)
+
+        if transcript and language:
+            # Natijani chiroyli formatda yuborish
+            header = f"✅ Transkripsiya muvaffaqiyatli yakunlandi!\n\n**Aniqlangan til:** `{language.upper()}`\n---\n"
+            await status_message.edit_text(header + transcript, parse_mode='Markdown')
+        else:
+            # Transkripsiyadan kelgan xatolikni ko'rsatish
+            await status_message.edit_text(transcript or "Noma'lum xatolik yuz berdi.")
+
+    except Exception as e:
+        logger.error(f"Transkripsiya jarayonida umumiy xatolik: {e}", exc_info=True)
+        await status_message.edit_text("Kechirasiz, faylni qayta ishlashda kutilmagan xatolik yuz berdi.")
+    finally:
+        # Vaqtinchalik fayllarni tozalash
+        if 'downloaded_file_path' in locals() and os.path.exists(downloaded_file_path):
+            os.remove(downloaded_file_path)
+        if 'output_audio_path' in locals() and os.path.exists(output_audio_path):
+            os.remove(output_audio_path)
+
+
+async def main() -> None:
+    """Start the bot."""
+    # Create the Application and pass it your bot's token.
+    application = ApplicationBuilder().token(TOKEN).build()
+
+    # on different commands - answer in Telegram
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
 
-    # Button callback handler
-    application.add_handler(CallbackQueryHandler(button_callback_handler))
-
-    # Message handler for video download
+    # on non command i.e message - download the video from the message.
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
 
-    # Run the bot
+    # Add a handler for button clicks (for downloading songs)
+    application.add_handler(CallbackQueryHandler(button_callback_handler))
+
+    # Yangi transkripsiya funksiyasi uchun handler
+    application.add_handler(MessageHandler(filters.AUDIO | filters.VIDEO | filters.VOICE, handle_media_for_transcription))
+
+    # Run the bot until the user presses Ctrl-C
     application.run_polling()
 
 
