@@ -126,7 +126,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 await context.bot.send_video(
                     chat_id=chat_id,
                     video=video_file,
-                    caption=os.path.basename(video_path),
+                    caption=os.path.basename(video_path).split('_', 1)[-1] if '_' in os.path.basename(video_path) else os.path.basename(video_path),
                     reply_markup=inline_markup_for_video # Attach button here if available
                 )
             logger.info(f"Successfully sent video: {video_path} to chat_id: {chat_id}")
@@ -255,7 +255,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         logger.info(f"Download song button clicked. Search query: {search_query}")
 
         # Send a new message to show that we are processing the request
-        status_message = await context.bot.send_message(chat_id=query.message.chat_id, text=f"Searching for '{search_query}' to download...")
+        status_message = await context.bot.send_message(chat_id=query.message.chat_id, text=f"'{search_query}'ni qidiryapman va yuklab olinmoqda...")
         
         # Make filename unique to this request to avoid race conditions
         song_output_template = os.path.join(DOWNLOAD_PATH, f'{update.update_id}_%(title)s_audio.%(ext)s')
@@ -307,7 +307,8 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                 
                 try:
                     with open(song_audio_path, 'rb') as audio_file:
-                        await context.bot.send_audio(chat_id=query.message.chat_id, audio=audio_file, title=os.path.basename(song_audio_path).replace('_audio.mp3',''))
+                        file_name_without_id = os.path.basename(song_audio_path).split('_', 1)[-1] if '_' in os.path.basename(song_audio_path) else os.path.basename(song_audio_path)
+                        await context.bot.send_audio(chat_id=query.message.chat_id, audio=audio_file, title=file_name_without_id.replace('_audio.mp3',''), filename=file_name_without_id)
                     logger.info(f"Successfully sent song audio: {song_audio_path} to chat_id: {query.message.chat_id}")
                     if status_message: # Delete the status message after sending audio
                         await status_message.delete()
@@ -325,11 +326,17 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             else:
                 error_message = stderr.decode(errors='ignore')
                 logger.error(f"yt-dlp failed for song query: {search_query}. Error: {error_message}")
-                user_friendly_error = "Sorry, I was unable to download the song. This might be a temporary issue with the source. Please try again later."
+                user_friendly_error = "Kechirasiz, qo'shiqni yuklab ololmadim. Bu manbadagi vaqtinchalik muammo bo'lishi mumkin. Iltimos, keyinroq qayta urinib ko'ring."
                 if status_message:
                     await status_message.edit_text(user_friendly_error)
                 else:
-                    await context.bot.send_message(chat_id=query.message.chat_id, text=user_friendly_error)
+                    # If status_message was not set (e.g. original message deleted or error before status_message)
+                    # try to edit the callback query message, or send a new one if that fails.
+                    try:
+                        await query.edit_message_text(text=user_friendly_error)
+                    except Exception as edit_error:
+                        logger.warning(f"Could not edit callback query message: {edit_error}. Sending new message.")
+                        await context.bot.send_message(chat_id=query.message.chat_id, text=user_friendly_error)
 
         except Exception as e:
             logger.error(f"An error occurred during song download process for {search_query}: {e}")
