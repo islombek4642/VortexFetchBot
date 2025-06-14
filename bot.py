@@ -349,8 +349,8 @@ async def _generate_stats_message_and_keyboard(page: int) -> (str, Optional[Inli
     message_text += f"Sahifa: {page}/{total_pages}\n\n"
 
     for user_data in users:
-        # user_data is a tuple: (id, user_id, first_name, last_name, username, first_seen, last_seen)
-        uid, user_id_db, first_name, last_name, username, first_seen, last_seen = user_data
+        # user_data is a tuple: (user_id, first_name, last_name, username, first_seen, last_seen)
+        user_id_db, first_name, last_name, username, first_seen, last_seen = user_data
         
         # Create a user-friendly name
         full_name = (first_name or "") + (" " + last_name if last_name else "")
