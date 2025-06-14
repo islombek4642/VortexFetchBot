@@ -161,12 +161,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 @register_user
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/help komandasi yuborilganda yordam xabarini yuboradi."""
+    """Sends a detailed help message with all available commands and features."""
+    help_text = (
+        "🚀 <b>VortexFetchBot - Sizning universal media yordamchingiz!</b>\n\n"
+        "Bu bot sizga quyidagi ajoyib imkoniyatlarni taqdim etadi:\n\n"
+        "🎬 <b>Video va Audio Yuklash</b>\n"
+        "YouTube, Instagram, TikTok yoki boshqa saytdan video havolasini yuboring. "
+        "Bot uni siz uchun yuklab beradi.\n"
+        "<i>Qanday ishlatiladi: Botga video havolasini yuboring.</i>\n\n"
+        "🎵 <b>Musiqani Topish (Shazam)</b>\n"
+        "Videodagi yoki audiodagi musiqani yoqtirib qoldingizmi? Bot uni topib, "
+        "yuklab olish uchun tugma yuboradi.\n"
+        "<i>Qanday ishlatiladi: Video yuklaganda yoki audio fayl yuborganda avtomatik ishlaydi.</i>\n\n"
+        "🎤 <b>Ovozni Matnga O'girish</b>\n"
+        "Har qanday audio, video yoki ovozli xabarni yuboring va bot undagi nutqni "
+        "siz uchun matnga o'girib beradi.\n"
+        "<i>Qanday ishlatiladi: Botga audio, video yoki ovozli xabar yuboring.</i>\n\n"
+        "--- \n"
+        "<b>Qo'shimcha buyruqlar:</b>\n"
+        "<code>/start</code> - Botni ishga tushirish\n"
+        "<code>/help</code> - Ushbu yordam xabarini ko'rsatish"
+    )
     await update.message.reply_text(
-        "Menga qo'llab-quvvatlanadigan platformalardan (masalan, YouTube, Instagram, TikTok, va boshqalar) "
-        "video havolasini yuboring, men uni yuklab, sizga yuboraman.\n\n"
-        "Yuklab olish uchun yt-dlp kutubxonasidan foydalaniladi. "
-        "Katta hajmli videolar yuklab olinmaganligi yoki vaqt talab qilishi mumkin."
+        help_text,
+        parse_mode='HTML',
+        disable_web_page_preview=True
     )
 
 @register_user
