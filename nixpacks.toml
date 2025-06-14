@@ -6,8 +6,8 @@ nixPkgs = ["ffmpeg", "python310", "python310Packages.pip", "yt-dlp", "git"]
 
 [phases.install]
 # Python paketlarini o'rnatish
-cmds = ["python -m pip install --upgrade pip", "python -m pip install -r requirements.txt"]
+cmds = ["pip install --upgrade pip", "pip install -r requirements.txt"]
 
-[phases.start]
+[start]
 # Botni ishga tushirish
 cmd = "python bot.py"
