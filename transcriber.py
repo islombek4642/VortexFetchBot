@@ -26,7 +26,7 @@ else:
     except Exception as e:
         logger.error(f"Wit.ai mijozini sozlashda xatolik: {e}")
 
-async def _transcribe_chunk(chunk_path: str, index: int, max_retries: int = 1) -> str:
+async def _transcribe_chunk(chunk_path: str, index: int, max_retries: int = 3) -> str:
     """Yordamchi funksiya: bitta audio bo'lakni matnga o'giradi, xatolik bo'lsa qayta urinadi."""
     if not wit_client:
         logger.error(f"Bo'lak {index+1}: Wit.ai mijozi sozlanmagan.")
@@ -36,7 +36,7 @@ async def _transcribe_chunk(chunk_path: str, index: int, max_retries: int = 1) -
 
     def sync_speech_call():
         with open(chunk_path, 'rb') as audio_file:
-            resp = wit_client.speech(audio_file, {'Content-Type': 'audio/mpeg'})
+            resp = wit_client.speech(audio_file, {'Content-Type': 'audio/wav'})
             if resp:
                 if isinstance(resp, collections.abc.Iterator):
                     return next(resp, None)
@@ -56,7 +56,7 @@ async def _transcribe_chunk(chunk_path: str, index: int, max_retries: int = 1) -
             logger.error(f"{index+1}-bo'lakni o'girishda xatolik (urinish {attempt+1}): {e}")
         
         if attempt < max_retries:
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
     
     logger.error(f"{index+1}-bo'lak barcha urinishlardan so'ng ham o'girilmadi.")
     return ""
@@ -72,7 +72,7 @@ async def transcribe_audio_from_file(audio_path: str) -> AsyncGenerator[tuple[st
 
     try:
         audio = AudioSegment.from_file(audio_path)
-        chunk_length_ms = 15 * 1000 
+        chunk_length_ms = 45 * 1000 
         chunks = make_chunks(audio, chunk_length_ms)
         total_chunks = len(chunks)
 
@@ -84,9 +84,9 @@ async def transcribe_audio_from_file(audio_path: str) -> AsyncGenerator[tuple[st
         
         for i, chunk in enumerate(chunks):
             base_name = os.path.basename(audio_path).rsplit('.', 1)[0]
-            chunk_name = f"downloads/chunk_{base_name}_{i}.mp3"
+            chunk_name = f"downloads/chunk_{base_name}_{i}.wav"
             
-            chunk.export(chunk_name, format="mp3")
+            chunk.export(chunk_name, format="wav")
             
             text = await _transcribe_chunk(chunk_name, i)
             if text:
