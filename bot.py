@@ -2,13 +2,15 @@
 
 import logging
 import os
+import re
+import time
 import asyncio
 import pathlib # For creating file URIs
 from typing import Optional
 from dotenv import load_dotenv # Added for .env support
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from shazamio import Shazam # For song recognition
 import ffmpeg # For audio extraction
 from transcriber import transcribe_audio_from_file # Import our new function
