@@ -431,7 +431,7 @@ async def handle_media_for_transcription(update: Update, context: ContextTypes.D
             os.remove(output_audio_path)
 
 
-async def main() -> None:
+def main() -> None:
     """Start the bot."""
     # Create the Application and pass it your bot's token.
     application = ApplicationBuilder().token(TOKEN).build()
