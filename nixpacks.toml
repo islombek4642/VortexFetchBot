@@ -2,7 +2,7 @@
 [phases.setup]
 # Audio qayta ishlash uchun ffmpeg va Python 3.10 kerak bo'ladi.
 # Shuningdek, yt-dlp uchun kerak bo'ladigan qo'shimcha paketlar
-nixPkgs = ["ffmpeg", "python310", "python310Packages.pip", "yt-dlp", "git"]
+nixPkgs = ["ffmpeg", "python310", "pip", "yt-dlp"]
 
 [phases.install]
 # Python paketlarini o'rnatish
