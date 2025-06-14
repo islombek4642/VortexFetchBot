@@ -279,11 +279,9 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             'yt-dlp',
             '--quiet',
             '--no-warnings',
-            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
             '--extract-audio',
             '--audio-format', 'mp3',
             '--audio-quality', '0', # Best quality
-            '--format', 'bestaudio/best',
             '--match-filter', 'duration < 600',  # Limit to 10 minutes
             '-o', song_output_template,
             '--max-filesize', '20m',
@@ -308,20 +306,18 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                 
                 if not downloaded_songs:
                     logger.error(f"yt-dlp song download finished but no file found for query: {search_query}")
+                    logger.error(f"Muvaffaqiyatli yuklab olingan bo'lsa-da, '{search_query}' uchun fayl topilmadi.")
                     if status_message:
-                        await status_message.edit_text("Sorry, I couldn't download the song audio or no suitable format was found.")
-                    else:
-                        await context.bot.send_message(chat_id=query.message.chat_id, text="Sorry, I couldn't download the song audio or no suitable format was found.")
-                    return
+                        await status_message.edit_text(text="Kechirasiz, qo'shiq yuklandi, lekin uni qayta ishlashda xatolik yuz berdi.")
+                    return # Exit after handling error
 
-                song_audio_path = max(downloaded_songs, key=os.path.getctime) # Get the newest file
-                logger.info(f"Successfully downloaded song audio to: {song_audio_path}")
-                if status_message:
-                    await status_message.edit_text("Song download complete! Uploading to Telegram...")
-                else:
-                    # Fallback if status_message wasn't sent for some reason
-                    await context.bot.send_message(chat_id=query.message.chat_id, text="Song download complete! Uploading to Telegram...")
+                song_audio_path = downloaded_songs[0]
+                logger.info(f"Found downloaded song: {song_audio_path}")
+
+                if status_message: # Update status message
+                    await status_message.edit_text(text="Qo'shiq muvaffaqiyatli yuklandi! Telegramga yuborilmoqda...")
                 
+                # This try-except block is for SENDING the file, not downloading.
                 try:
                     with open(song_audio_path, 'rb') as audio_file:
                         file_name_without_id = os.path.basename(song_audio_path).split('_', 1)[-1] if '_' in os.path.basename(song_audio_path) else os.path.basename(song_audio_path)
@@ -329,31 +325,31 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                     logger.info(f"Successfully sent song audio: {song_audio_path} to chat_id: {query.message.chat_id}")
                     if status_message: # Delete the status message after sending audio
                         await status_message.delete()
-                        logger.info(f"Deleted status message (ID: {status_message.message_id}) after sending audio.")
                 except Exception as e:
                     logger.error(f"Failed to send song audio {song_audio_path} to Telegram: {e}")
                     if status_message:
-                        await status_message.edit_text(f"Sorry, I downloaded the song but failed to send it. Error: {e}")
-                    else:
-                        await context.bot.send_message(chat_id=query.message.chat_id, text=f"Sorry, I downloaded the song but failed to send it. Error: {e}")
+                        await status_message.edit_text(f"Kechirasiz, men qo'shiqni yukladim, lekin uni yuborishda xatolik yuz berdi.")
                 finally:
                     if os.path.exists(song_audio_path):
                         os.remove(song_audio_path)
                         logger.info(f"Cleaned up downloaded song audio: {song_audio_path}")
             else:
-                error_message = stderr.decode(errors='ignore')
-                logger.error(f"yt-dlp failed for song query: {search_query}. Error: {error_message}")
-                user_friendly_error = "Kechirasiz, qo'shiqni yuklab ololmadim. Bu manbadagi vaqtinchalik muammo bo'lishi mumkin. Iltimos, keyinroq qayta urinib ko'ring."
+                error_output = stderr.decode(errors='ignore')
+                logger.error(f"yt-dlp failed for song search '{search_query}'. Error: {error_output}")
+                error_text = "Kechirasiz, qo'shiqni yuklab ololmadim. Bu manbadagi vaqtinchalik muammo bo'lishi mumkin. Iltimos, keyinroq qayta urinib ko'ring."
+                if "Requested format is not available" in error_output:
+                    error_text = "Kechirasiz, bu qo'shiq uchun mos audio format topilmadi. Boshqa videoni sinab ko'ring."
+                
                 if status_message:
-                    await status_message.edit_text(user_friendly_error)
+                    await status_message.edit_text(text=error_text)
                 else:
                     # If status_message was not set (e.g. original message deleted or error before status_message)
                     # try to edit the callback query message, or send a new one if that fails.
                     try:
-                        await query.edit_message_text(text=user_friendly_error)
+                        await query.edit_message_text(text=error_text)
                     except Exception as edit_error:
                         logger.warning(f"Could not edit callback query message: {edit_error}. Sending new message.")
-                        await context.bot.send_message(chat_id=query.message.chat_id, text=user_friendly_error)
+                        await context.bot.send_message(chat_id=query.message.chat_id, text=error_text)
 
         except Exception as e:
             logger.error(f"An error occurred during song download process for {search_query}: {e}")
