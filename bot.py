@@ -29,8 +29,13 @@ if not TOKEN:
     logger.error("TELEGRAM_BOT_TOKEN environment variable not set!")
     # You should exit or raise an error here if the token is critical for startup
 
+# Create download directory if it doesn't exist
+DOWNLOAD_PATH = 'downloads'
+os.makedirs(DOWNLOAD_PATH, exist_ok=True)
+
 # Load YouTube cookies from environment variable and write to a file
-COOKIE_FILE_PATH = 'cookies.txt'
+COOKIE_FILE_PATH = "cookies.txt"
+
 YOUTUBE_COOKIES = os.getenv('YOUTUBE_COOKIES')
 if YOUTUBE_COOKIES:
     try:
