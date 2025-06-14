@@ -224,54 +224,65 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def recognize_and_offer_song_download(update: Update, context: ContextTypes.DEFAULT_TYPE, video_filepath: str) -> Optional[InlineKeyboardMarkup]:
     """Extracts audio, recognizes song, and offers download if found."""
-    chat_id = update.message.chat_id
+    logger.info("Attempting to recognize song.")
     user_id = update.message.from_user.id
-    audio_extraction_path = None
-    # Make filename unique to avoid race conditions
-    audio_extraction_path = os.path.join(DOWNLOAD_PATH, f'{user_id}_{update.update_id}_extracted_audio.m4a')
-
+    audio_extraction_path = os.path.join(DOWNLOAD_PATH, f"{user_id}_{update.update_id}_extracted_audio.m4a")
+    
+    status_message = None
     try:
-        # 1. Extract audio from the video
-        (
-            ffmpeg
-            .input(video_filepath)
-            .output(audio_extraction_path, acodec='aac', ar='44100', ab='192k')
-            .overwrite_output()
-            .run(quiet=True)
+        status_message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="🎶 Videodagi musiqa aniqlanmoqda..."
         )
-        logger.info(f"Audio muvaffaqiyatli ajratib olindi: {audio_extraction_path}")
+        logger.info("Sent 'identifying song' message.")
 
-        # 2. Recognize the song from the extracted audio
+        logger.info(f"Extracting audio from {video_filepath} to {audio_extraction_path} asynchronously.")
+        
+        stream = ffmpeg.input(video_filepath)
+        stream = ffmpeg.output(stream, audio_extraction_path, acodec='aac', ar='44100', ab='192k')
+        stream = ffmpeg.overwrite_output(stream)
+        
+        process = await ffmpeg.run_async(stream, pipe_stderr=True, quiet=True)
+        _, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            raise ffmpeg.Error('ffmpeg', stdout=None, stderr=stderr)
+
+        logger.info(f"Audio extracted successfully to {audio_extraction_path}")
+
         shazam = Shazam()
+        logger.info("Recognizing song with Shazam...")
         recognition_result = await shazam.recognize(audio_extraction_path)
-
+        
         if recognition_result and recognition_result.get('track'):
-            track_info = recognition_result['track']
-            song_title = track_info.get('title', 'Noma`lum qo`shiq')
-            song_artist = track_info.get('subtitle', 'Noma`lum ijrochi')
-            
-            logger.info(f"Qo'shiq topildi: {song_artist} - {song_title}")
+            song_title = recognition_result['track'].get('title', 'Noma\'lum nom')
+            song_artist = recognition_result['track'].get('subtitle', 'Noma\'lum ijrochi')
+            logger.info(f"Shazam found a match: {song_artist} - {song_title}")
 
-            # 3. Create an inline button to offer song download
+            await status_message.delete()
+
             song_details_payload = f"{song_title} - {song_artist}"
             keyboard = [
                 [InlineKeyboardButton(f"🎵 Qo'shiqni yuklash: {song_artist} - {song_title}", callback_data=f'download_song|{song_details_payload}')]
             ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
-            await context.bot.send_message(
-                chat_id=chat_id, 
-                text="Video ichidan musiqa topildi. Yuklab olishni xohlaysizmi?", 
-                reply_markup=reply_markup
-            )
-            return reply_markup
+            return InlineKeyboardMarkup(keyboard)
+        else:
+            logger.warning("Shazam could not identify the song or the result was empty.")
+            await status_message.edit_text("Afsuski, bu videodagi musiqani aniqlab bo'lmadi.")
+            return None
 
     except ffmpeg.Error as e:
-        logger.error(f"Audio ajratib olishda ffmpeg xatosi: {e.stderr.decode() if e.stderr else 'Noma`lum xato'}")
+        error_details = e.stderr.decode('utf-8', errors='ignore') if e.stderr else "No details"
+        logger.error(f"ffmpeg error during audio extraction: {error_details}")
+        if status_message:
+            await status_message.edit_text("❌ Musiqani aniqlash uchun audioni ajratib olishda xatolik yuz berdi.")
+        return None
     except Exception as e:
-        logger.error(f"Qo'shiqni aniqlashda xatolik: {e}", exc_info=True)
+        logger.error(f"Error in recognize_and_offer_song_download: {e}", exc_info=True)
+        if status_message:
+            await status_message.edit_text("❌ Musiqani aniqlashda kutilmagan xatolik yuz berdi.")
+        return None
     finally:
-        # Clean up the extracted audio file
         if audio_extraction_path and os.path.exists(audio_extraction_path):
             try:
                 os.remove(audio_extraction_path)
