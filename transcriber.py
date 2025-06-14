@@ -4,10 +4,10 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# Resurslarni tejash uchun kichikroq modeldan foydalanamiz.
-# "base" modeli ko'p tilli va umumiy foydalanish uchun yaxshi.
+# Aniqlikni oshirish uchun "medium" modelidan foydalanamiz.
+# Bu model "base"ga qaraganda ancha aniqroq, lekin ko'proq resurs talab qiladi.
 # Birinchi ishga tushganda, bu modelni yuklab oladi.
-MODEL_SIZE = "base"
+MODEL_SIZE = "medium"
 COMPUTE_TYPE = "int8" # CPU uchun optimizatsiya
 
 try:
@@ -25,8 +25,9 @@ def format_transcript(segments):
     for segment in segments:
         start_time = round(segment.start)
         end_time = round(segment.end)
-        # Vaqt belgisini formatlash: [00:05 -> 00:10]
-        timestamp = f"[{start_time//60:02d}:{start_time%60:02d} -> {end_time//60:02d}:{end_time%60:02d}]"
+        # Vaqt belgisini formatlash: `[00:05 -> 00:10]`
+        # Markdown'da to'g'ri ko'rinishi uchun backtick (`) belgilari qo'shildi.
+        timestamp = f"`[{start_time//60:02d}:{start_time%60:02d} -> {end_time//60:02d}:{end_time%60:02d}]`"
         transcript += f"{timestamp} {segment.text.strip()}\n"
     return transcript
 
