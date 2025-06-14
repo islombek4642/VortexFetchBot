@@ -403,7 +403,8 @@ async def handle_media_for_transcription(update: Update, context: ContextTypes.D
                 audio_path_to_transcribe = output_audio_path
                 logger.info(f"Audio muvaffaqiyatli ajratib olindi: {output_audio_path}")
             except ffmpeg.Error as e:
-                logger.error(f"ffmpeg xatosi: {e.stderr.decode() if e.stderr else 'Noma\'lum xato'}")
+                error_details = e.stderr.decode() if e.stderr else "Noma'lum xato"
+                logger.error(f"ffmpeg xatosi: {error_details}")
                 await status_message.edit_text("Videodan audioni ajratib olishda xatolik yuz berdi.")
                 return
 
