@@ -250,8 +250,9 @@ async def recognize_and_offer_song_download(status_message: Message, video_filep
         # Use acodec='copy' to directly copy the audio stream without re-encoding, which is much faster.
         # vn=True disables video recording.
         stream = ffmpeg.input(video_filepath)
-        # Use 'map' to select only the audio stream, and 'acodec=copy' to copy it without re-encoding.
-        stream = ffmpeg.output(stream, audio_extraction_path, map='0:a', acodec='copy')
+        # Re-encode to a standard AAC format to ensure compatibility with Shazam's audio parser.
+        # This is more robust than 'acodec=copy' and prevents parsing errors.
+        stream = ffmpeg.output(stream, audio_extraction_path, map='0:a', acodec='aac', ar='44100', ab='128k')
         await _run_ffmpeg_async(functools.partial(stream.run, overwrite_output=True, quiet=True))
 
         logger.info(f"Audio extracted successfully to {audio_extraction_path}")
