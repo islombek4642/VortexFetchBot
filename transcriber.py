@@ -1,73 +1,63 @@
-import logging
-from faster_whisper import WhisperModel
 import os
+import logging
 import asyncio
+from wit import Wit
+from dotenv import load_dotenv
 
+# Logging sozlamalari
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# "base" modeli - eng tez va eng kam resurs talab qiladigan model.
-# Aniqligi pastroq, lekin tezkor transkripsiya uchun mos.
-# Birinchi ishga tushganda, bu modelni yuklab oladi.
-MODEL_SIZE = "base"
-COMPUTE_TYPE = "int8" # CPU uchun optimizatsiya
+# .env faylidan o'zgaruvchilarni yuklash
+load_dotenv()
+WIT_AI_TOKEN = os.getenv("WIT_AI_TOKEN")
 
-try:
-    logger.info(f"'{MODEL_SIZE}' modelini yuklash...")
-    # device="cpu" va compute_type="int8" CPU optimizatsiyasi uchun
-    model = WhisperModel(MODEL_SIZE, device="cpu", compute_type=COMPUTE_TYPE)
-    logger.info("Model muvaffaqiyatli yuklandi.")
-except Exception as e:
-    logger.error(f"Whisper modelini yuklashda xatolik: {e}")
-    model = None
-
-def format_transcript(segments):
-    """Transkripsiya segmentlarini vaqt belgilari bilan o'qiladigan matnga formatlaydi."""
-    transcript = ""
-    for segment in segments:
-        start_time = round(segment.start)
-        end_time = round(segment.end)
-        # Vaqt belgisini formatlash: `[00:05 -> 00:10]`
-        # Markdown'da to'g'ri ko'rinishi uchun backtick (`) belgilari qo'shildi.
-        timestamp = f"`[{start_time//60:02d}:{start_time%60:02d} -> {end_time//60:02d}:{end_time%60:02d}]`"
-        transcript += f"{timestamp} {segment.text.strip()}\n"
-    return transcript
+wit_client = None
+if not WIT_AI_TOKEN:
+    logger.error("WIT_AI_TOKEN muhit o'zgaruvchisi topilmadi. Iltimos, uni .env fayliga yoki tizimga qo'shing.")
+else:
+    try:
+        wit_client = Wit(WIT_AI_TOKEN)
+        logger.info("Wit.ai mijozi muvaffaqiyatli sozlandi.")
+    except Exception as e:
+        logger.error(f"Wit.ai mijozini sozlashda xatolik: {e}")
 
 async def transcribe_audio_from_file(audio_path: str) -> (str, str):
     """
-    Whisper modeli yordamida audio faylni transkripsiya qiladi.
-    Aniqlangan til va formatlangan transkriptni qaytaradi.
+    Wit.ai API yordamida audio faylni matnga o'giradi.
+    Qaytadigan qiymatlar: (transkripsiya qilingan matn, til uchun belgi)
     """
-    if not model:
-        error_message = "Transkripsiya modeli yuklanmagan. Iltimos, loglarni tekshiring."
-        logger.error(error_message)
-        return None, error_message
+    if not wit_client:
+        return "Xatolik: Wit.ai mijozi sozlanmagan.", "n/a"
 
     if not os.path.exists(audio_path):
-        error_message = f"Audio fayl topilmadi: {audio_path}"
-        logger.error(error_message)
-        return None, error_message
-    
+        return f"Xatolik: Audio fayl topilmadi: {audio_path}", "n/a"
+
     try:
-        logger.info(f"'{audio_path}' faylini transkripsiya qilish boshlandi...")
-        loop = asyncio.get_running_loop()
-        # Run the blocking transcribe function in a separate thread
-        segments, info = await loop.run_in_executor(
-            None,  # Use the default thread pool executor
-            lambda: model.transcribe(audio_path, beam_size=5)
-        )
-
-        detected_language = info.language
-        lang_probability = info.language_probability
-        logger.info(f"Aniqlangan til: {detected_language} (ehtimollik: {lang_probability:.2f})")
-
-
-
-        formatted_text = format_transcript(segments)
+        logger.info(f"'{audio_path}' fayli Wit.ai'ga yuborilmoqda...")
         
-        logger.info(f"'{audio_path}' fayli muvaffaqiyatli transkripsiya qilindi.")
-        return detected_language, formatted_text
+        loop = asyncio.get_event_loop()
+
+        def sync_speech_call():
+            with open(audio_path, 'rb') as audio_file:
+                # wit.speech sinxron kutubxona bo'lgani uchun uni executor'da ishga tushiramiz
+                resp = wit_client.speech(audio_file, {'Content-Type': 'audio/mpeg'})
+                # Wit.ai dan kelgan javob generator bo'lishi mumkin, birinchi natijani olamiz
+                if resp:
+                    return next(resp, None)
+                return None
+
+        response = await loop.run_in_executor(None, sync_speech_call)
+
+        if response and 'text' in response and response['text']:
+            text = response['text']
+            logger.info(f"Wit.ai transkripsiya natijasi: {text}")
+            # Wit.ai tilni aniq qaytarmaydi, shuning uchun manbani ko'rsatamiz
+            return text, "wit.ai"
+        else:
+            logger.warning(f"Wit.ai dan matn olinmadi yoki matn bo'sh. To'liq javob: {response}")
+            return "Matn aniqlanmadi.", "n/a"
 
     except Exception as e:
-        error_message = f"Transkripsiya jarayonida xatolik yuz berdi: {e}"
-        logger.error(error_message, exc_info=True)
-        return None, error_message
+        logger.error(f"Wit.ai transkripsiya paytida xatolik: {e}", exc_info=True)
+        return f"Transkripsiya paytida xatolik yuz berdi.", "n/a"
