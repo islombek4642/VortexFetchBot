@@ -1,6 +1,7 @@
 import logging
 from faster_whisper import WhisperModel
 import os
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,12 @@ async def transcribe_audio_from_file(audio_path: str) -> (str, str):
     
     try:
         logger.info(f"'{audio_path}' faylini transkripsiya qilish boshlandi...")
-        segments, info = model.transcribe(audio_path, beam_size=5)
+        loop = asyncio.get_running_loop()
+        # Run the blocking transcribe function in a separate thread
+        segments, info = await loop.run_in_executor(
+            None,  # Use the default thread pool executor
+            lambda: model.transcribe(audio_path, beam_size=5)
+        )
 
         detected_language = info.language
         lang_probability = info.language_probability

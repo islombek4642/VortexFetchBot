@@ -13,6 +13,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from shazamio import Shazam # For song recognition
 import ffmpeg # For audio extraction
+import functools # To use functools.partial
 from transcriber import transcribe_audio_from_file # Import our new function
 
 # Enable logging
@@ -189,25 +190,27 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
         
         logger.info(f"Successfully downloaded video to: {video_path}")
-        await status_message.edit_text(f"Yuklab olish yakunlandi! Video tayyorlanmoqda va musiqa tekshirilmoqda...")
+        await status_message.edit_text("Yuklab olish yakunlandi! Musiqa aniqlanmoqda...")
 
-        # Perform song recognition BEFORE sending video
-        inline_markup_for_video: Optional[InlineKeyboardMarkup] = None
-        # video_path is already confirmed to exist at this point by the outer if condition
-        # recognize_and_offer_song_download will send its own "Attempting to identify..." message
-        inline_markup_for_video = await recognize_and_offer_song_download(update, context, video_path)
+        # Perform song recognition directly and wait for the result.
+        # Pass the status_message for it to edit.
+        inline_markup_for_video = await recognize_and_offer_song_download(status_message, video_path, user_id, update.update_id)
 
-        # Send the video
+        # The recognition function will handle its own status updates.
+        # Now, send the video with the resulting keyboard.
         logger.info(f"Sending video {video_path} with caption '{os.path.basename(video_path)}' and reply_markup: {inline_markup_for_video is not None}")
         with open(video_path, 'rb') as video_file:
-            await context.bot.send_video(
-                chat_id=chat_id,
+            # We send the video as a reply to the original user message
+            await update.message.reply_video(
                 video=video_file,
-                filename=os.path.basename(video_path),
-                caption=" ".join(os.path.basename(video_path).split('_')[2:]),
-                reply_markup=inline_markup_for_video # Attach button here if available
+                caption=os.path.basename(video_path),
+                reply_markup=inline_markup_for_video # This will have the button if a song was found
             )
-        logger.info(f"Successfully sent video: {video_path} to chat_id: {chat_id}")
+        
+        # Delete the status message as we are done with the main flow.
+        # The recognition function might have edited it to show the final status.
+        await status_message.delete()
+        logger.info(f"Successfully sent video and cleaned up status message for: {video_path}")
 
     except asyncio.CancelledError:
         logger.warning("Yuklash bekor qilindi.")
@@ -222,73 +225,59 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             os.remove(video_path)
 
 
-async def recognize_and_offer_song_download(update: Update, context: ContextTypes.DEFAULT_TYPE, video_filepath: str) -> Optional[InlineKeyboardMarkup]:
-    """Extracts audio, recognizes song, and offers download if found."""
-    logger.info("Attempting to recognize song.")
-    user_id = update.message.from_user.id
-    audio_extraction_path = os.path.join(DOWNLOAD_PATH, f"{user_id}_{update.update_id}_extracted_audio.m4a")
-    
-    status_message = None
-    try:
-        status_message = await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="🎶 Videodagi musiqa aniqlanmoqda..."
-        )
-        logger.info("Sent 'identifying song' message.")
+async def _run_ffmpeg_async(func):
+    """Runs a blocking ffmpeg function in a separate thread to avoid blocking the asyncio event loop."""
+    loop = asyncio.get_running_loop()
+    # Use functools.partial to pass the function and its arguments
+    return await loop.run_in_executor(None, func)
 
-        logger.info(f"Extracting audio from {video_filepath} to {audio_extraction_path} asynchronously.")
+async def recognize_and_offer_song_download(status_message: Message, video_filepath: str, user_id: int, update_id: int) -> Optional[InlineKeyboardMarkup]:
+    """Extracts audio, recognizes song, and offers download if found. Edits the provided status message."""
+    logger.info("Attempting to recognize song.")
+    audio_extraction_path = os.path.join(DOWNLOAD_PATH, f"{user_id}_{update_id}_extracted_audio.m4a")
+    
+    try:
+        await status_message.edit_text("🎶 Videodan audio ajratib olinmoqda...")
+        logger.info(f"Extracting audio from {video_filepath} to {audio_extraction_path}.")
         
         stream = ffmpeg.input(video_filepath)
         stream = ffmpeg.output(stream, audio_extraction_path, acodec='aac', ar='44100', ab='192k')
-        stream = ffmpeg.overwrite_output(stream)
-        
-        process = ffmpeg.run_async(stream, pipe_stderr=True, quiet=True)
-        _, stderr = await process.communicate()
-
-        if process.returncode != 0:
-            raise ffmpeg.Error('ffmpeg', stdout=None, stderr=stderr)
+        await _run_ffmpeg_async(functools.partial(stream.run, overwrite_output=True, quiet=True))
 
         logger.info(f"Audio extracted successfully to {audio_extraction_path}")
 
+        await status_message.edit_text("🎤 Shazam yordamida musiqa aniqlanmoqda...")
         shazam = Shazam()
-        logger.info("Recognizing song with Shazam...")
         recognition_result = await shazam.recognize(audio_extraction_path)
         
         if recognition_result and recognition_result.get('track'):
-            song_title = recognition_result['track'].get('title', 'Noma\'lum nom')
-            song_artist = recognition_result['track'].get('subtitle', 'Noma\'lum ijrochi')
+            track_info = recognition_result['track']
+            song_title = track_info.get('title', 'Noma\'lum nom')
+            song_artist = track_info.get('subtitle', 'Noma\'lum ijrochi')
             logger.info(f"Shazam found a match: {song_artist} - {song_title}")
-
-            await status_message.delete()
 
             song_details_payload = f"{song_title} - {song_artist}"
             keyboard = [
-                [InlineKeyboardButton(f"🎵 Qo'shiqni yuklash: {song_artist} - {song_title}", callback_data=f'download_song|{song_details_payload}')]
+                [InlineKeyboardButton(f"🎵 Yuklash: {song_artist} - {song_title}", callback_data=f'download_song|{song_details_payload}')]
             ]
             return InlineKeyboardMarkup(keyboard)
         else:
-            logger.warning("Shazam could not identify the song or the result was empty.")
+            logger.warning("Shazam could not identify the song.")
             await status_message.edit_text("Afsuski, bu videodagi musiqani aniqlab bo'lmadi.")
             return None
 
     except ffmpeg.Error as e:
         error_details = e.stderr.decode('utf-8', errors='ignore') if e.stderr else "No details"
         logger.error(f"ffmpeg error during audio extraction: {error_details}")
-        if status_message:
-            await status_message.edit_text("❌ Musiqani aniqlash uchun audioni ajratib olishda xatolik yuz berdi.")
+        await status_message.edit_text("❌ Audio ajratib olishda xatolik.")
         return None
     except Exception as e:
         logger.error(f"Error in recognize_and_offer_song_download: {e}", exc_info=True)
-        if status_message:
-            await status_message.edit_text("❌ Musiqani aniqlashda kutilmagan xatolik yuz berdi.")
+        await status_message.edit_text("❌ Musiqani aniqlashda kutilmagan xatolik.")
         return None
     finally:
-        if audio_extraction_path and os.path.exists(audio_extraction_path):
-            try:
-                os.remove(audio_extraction_path)
-            except OSError as e_del:
-                logger.error(f"Error deleting extracted audio file: {e_del}")
-    return None
+        if os.path.exists(audio_extraction_path):
+            os.remove(audio_extraction_path)
 
 
 async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -392,7 +381,8 @@ async def handle_media_for_transcription(update: Update, context: ContextTypes.D
             await status_message.edit_text("Videodan audio ajratib olinmoqda...")
             output_audio_path = os.path.join(DOWNLOAD_PATH, f"{user_id}_{file_id}_extracted_audio.mp3")
             try:
-                ffmpeg.input(downloaded_file_path).output(output_audio_path, acodec='libmp3lame', ar='16000').run(overwrite_output=True, quiet=True)
+                # Run ffmpeg non-blocking
+                await _run_ffmpeg_async(functools.partial(ffmpeg.input(downloaded_file_path).output(output_audio_path, acodec='libmp3lame', ar='16000').run, overwrite_output=True, quiet=True))
                 audio_path_to_transcribe = output_audio_path
                 logger.info(f"Audio extracted successfully: {output_audio_path}")
             except ffmpeg.Error as e:
