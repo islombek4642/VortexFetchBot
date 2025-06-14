@@ -2,6 +2,7 @@ import os
 import logging
 import asyncio
 import collections.abc
+from typing import AsyncGenerator
 from wit import Wit
 from dotenv import load_dotenv
 from pydub import AudioSegment
@@ -17,7 +18,7 @@ WIT_AI_TOKEN = os.getenv("WIT_AI_TOKEN")
 
 wit_client = None
 if not WIT_AI_TOKEN:
-    logger.error("WIT_AI_TOKEN muhit o'zgaruvchisi topilmadi. Iltimos, uni .env fayliga yoki tizimga qo'shing.")
+    logger.error("WIT_AI_TOKEN muhit o'zgaruvchisi topilmadi.")
 else:
     try:
         wit_client = Wit(WIT_AI_TOKEN)
@@ -25,10 +26,10 @@ else:
     except Exception as e:
         logger.error(f"Wit.ai mijozini sozlashda xatolik: {e}")
 
-async def _transcribe_chunk(chunk_path: str, index: int) -> str:
-    """Yordamchi funksiya: bitta audio bo'lakni matnga o'giradi."""
+async def _transcribe_chunk(chunk_path: str, index: int, max_retries: int = 1) -> str:
+    """Yordamchi funksiya: bitta audio bo'lakni matnga o'giradi, xatolik bo'lsa qayta urinadi."""
     if not wit_client:
-        logger.error(f"Bo'lak {index}: Wit.ai mijozi sozlanmagan.")
+        logger.error(f"Bo'lak {index+1}: Wit.ai mijozi sozlanmagan.")
         return ""
 
     loop = asyncio.get_event_loop()
@@ -37,76 +38,66 @@ async def _transcribe_chunk(chunk_path: str, index: int) -> str:
         with open(chunk_path, 'rb') as audio_file:
             resp = wit_client.speech(audio_file, {'Content-Type': 'audio/mpeg'})
             if resp:
-                # Wit.ai ba'zan iterator (generator) o'rniga to'g'ridan-to'g'ri dict qaytarishi mumkin.
-                # Ikkala holatni ham to'g'ri ishlash uchun tekshiramiz.
                 if isinstance(resp, collections.abc.Iterator):
                     return next(resp, None)
-                return resp  # Agar dict bo'lsa, o'zini qaytaramiz
+                return resp
             return None
 
-    try:
-        logger.info(f"{index+1}-bo'lak Wit.ai'ga yuborilmoqda...")
-        response = await loop.run_in_executor(None, sync_speech_call)
-        if response and 'text' in response and response['text']:
-            logger.info(f"{index+1}-bo'lak muvaffaqiyatli o'girildi.")
-            return response['text']
-        else:
-            logger.warning(f"{index+1}-bo'lakni o'girishda xatolik yoki bo'sh matn. Javob: {response}")
-            return ""
-    except Exception as e:
-        logger.error(f"{index+1}-bo'lakni o'girishda xatolik: {e}")
-        return ""
-
-
-async def transcribe_audio_from_file(audio_path: str) -> (str, str):
-    """
-    Wit.ai API yordamida audio faylni matnga o'giradi.
-    Uzoq audiolarni bo'laklarga bo'lib, alohida yuboradi.
-    """
-    if not wit_client:
-        return "Xatolik: Wit.ai mijozi sozlanmagan.", "n/a"
-
-    if not os.path.exists(audio_path):
-        return f"Xatolik: Audio fayl topilmadi: {audio_path}", "n/a"
-
-    try:
-        logger.info(f"'{audio_path}' fayli ochilmoqda va bo'laklarga bo'linmoqda...")
-        audio = AudioSegment.from_file(audio_path)
+    for attempt in range(max_retries + 1):
+        try:
+            logger.info(f"{index+1}-bo'lak Wit.ai'ga yuborilmoqda (urinish {attempt+1}/{max_retries+1})...")
+            response = await loop.run_in_executor(None, sync_speech_call)
+            if response and 'text' in response and response['text']:
+                logger.info(f"{index+1}-bo'lak muvaffaqiyatli o'girildi.")
+                return response['text']
+            else:
+                logger.warning(f"{index+1}-bo'lakni o'girishda xatolik yoki bo'sh matn. Javob: {response}")
+        except Exception as e:
+            logger.error(f"{index+1}-bo'lakni o'girishda xatolik (urinish {attempt+1}): {e}")
         
-        # Timeout xatosini oldini olish uchun bo'lak hajmini kichraytiramiz
+        if attempt < max_retries:
+            await asyncio.sleep(1)
+    
+    logger.error(f"{index+1}-bo'lak barcha urinishlardan so'ng ham o'girilmadi.")
+    return ""
+
+
+async def transcribe_audio_from_file(audio_path: str) -> AsyncGenerator[tuple[str, int, int], None]:
+    """
+    Wit.ai yordamida audioni matnga o'giradi va natijalarni qismlarga bo'lib (yield), jonli tarzda qaytaradi.
+    Qaytaradi: (matn bo'lagi, joriy bo'lak raqami, umumiy bo'laklar soni)
+    """
+    if not wit_client or not os.path.exists(audio_path):
+        return
+
+    try:
+        audio = AudioSegment.from_file(audio_path)
         chunk_length_ms = 15 * 1000 
         chunks = make_chunks(audio, chunk_length_ms)
-        
-        if not chunks:
-            return "Audio faylni bo'laklarga bo'lib bo'lmadi.", "n/a"
+        total_chunks = len(chunks)
 
-        logger.info(f"Audio fayl {len(chunks)} ta bo'lakka bo'lindi.")
-        
-        transcribed_texts = []
+        if total_chunks == 0:
+            logger.warning("Audio faylni bo'laklarga bo'lib bo'lmadi.")
+            return
+
+        logger.info(f"Audio fayl {total_chunks} ta bo'lakka bo'lindi.")
         
         for i, chunk in enumerate(chunks):
             base_name = os.path.basename(audio_path).rsplit('.', 1)[0]
             chunk_name = f"downloads/chunk_{base_name}_{i}.mp3"
             
-            logger.info(f"{i+1}/{len(chunks)}-bo'lak '{chunk_name}' fayliga saqlanmoqda...")
             chunk.export(chunk_name, format="mp3")
             
             text = await _transcribe_chunk(chunk_name, i)
             if text:
-                transcribed_texts.append(text)
+                yield text, i + 1, total_chunks
             
             try:
                 os.remove(chunk_name)
             except OSError as e:
                 logger.error(f"Vaqtinchalik faylni o'chirishda xatolik '{chunk_name}': {e}")
 
-        if not transcribed_texts:
-            return "Audio fayldan matn aniqlanmadi.", "n/a"
-
-        final_text = " ".join(transcribed_texts)
-        logger.info("Yakuniy transkripsiya muvaffaqiyatli yaratildi.")
-        return final_text, "wit.ai"
+        logger.info("Barcha bo'laklarni qayta ishlash yakunlandi.")
 
     except Exception as e:
         logger.error(f"Transkripsiya paytida kutilmagan xatolik: {e}", exc_info=True)
-        return "Transkripsiya paytida kutilmagan xatolik yuz berdi.", "n/a"
