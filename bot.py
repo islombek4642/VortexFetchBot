@@ -15,6 +15,9 @@ from shazamio import Shazam # For song recognition
 import ffmpeg # For audio extraction
 import functools # To use functools.partial
 from transcriber import transcribe_audio_from_file # Import our new function
+import database
+import html
+from functools import wraps
 
 # Enable logging
 logging.basicConfig(
@@ -28,9 +31,24 @@ load_dotenv()
 
 # Get Telegram Bot Token from environment variable
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+ADMIN_ID = os.getenv('ADMIN_ID')
+
 if not TOKEN:
     logger.error("TELEGRAM_BOT_TOKEN environment variable not set!")
-    # You should exit or raise an error here if the token is critical for startup
+    exit() # Exit if no token
+
+if not ADMIN_ID:
+    logger.warning("ADMIN_ID environment variable not set! Stats command will not be restricted.")
+    ADMIN_ID = None # Set to None if not found
+else:
+    try:
+        ADMIN_ID = int(ADMIN_ID)
+    except ValueError:
+        logger.error("ADMIN_ID is not a valid integer. Please check your .env file.")
+        exit()
+
+# Initialize the database
+database.init_db()
 
 # Create download directory if it doesn't exist
 DOWNLOAD_PATH = 'downloads'
@@ -112,6 +130,26 @@ async def _run_yt_dlp_with_progress(command: list, status_message: Message, prog
     stderr_bytes = await process.stderr.read()
     return process.returncode, stderr_bytes.decode('utf-8', errors='ignore')
 
+# --- User Registration Decorator ---
+def register_user(func):
+    """A decorator that registers/updates user info in the database before executing the command."""
+    @wraps(func)
+    async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        if update:
+            user = update.effective_user
+            if user:
+                logger.debug(f"Registering user: {user.id} - {user.username}")
+                database.update_user(
+                    user_id=user.id,
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    username=user.username
+                )
+        return await func(update, context, *args, **kwargs)
+    return wrapped
+
+
+@register_user
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/start komandasi yuborilganda xush kelibsiz xabarini yuboradi."""
     user = update.effective_user
@@ -119,6 +157,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         rf"Salom {user.mention_html()}! Menga video havolasini yuboring va men uni siz uchun yuklab beraman.",
     )
 
+@register_user
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/help komandasi yuborilganda yordam xabarini yuboradi."""
     await update.message.reply_text(
@@ -128,6 +167,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "Katta hajmli videolar yuklab olinmaganligi yoki vaqt talab qilishi mumkin."
     )
 
+@register_user
 async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Downloads video from the URL sent by the user."""
     user_id = update.message.from_user.id
@@ -244,7 +284,7 @@ async def recognize_and_offer_song_download(status_message: Message, video_filep
     audio_extraction_path = os.path.join(DOWNLOAD_PATH, f"{user_id}_{update_id}_extracted_audio.m4a")
     
     try:
-        await status_message.edit_text("🎶 Videodan audio ajratib olinmoqda...")
+        await status_message.edit_text(" Videodan audio ajratib olinmoqda...")
         logger.info(f"Extracting audio from {video_filepath} to {audio_extraction_path}.")
         
         # Use acodec='copy' to directly copy the audio stream without re-encoding, which is much faster.
@@ -257,7 +297,7 @@ async def recognize_and_offer_song_download(status_message: Message, video_filep
 
         logger.info(f"Audio extracted successfully to {audio_extraction_path}")
 
-        await status_message.edit_text("🎤 Shazam yordamida musiqa aniqlanmoqda...")
+        await status_message.edit_text(" Shazam yordamida musiqa aniqlanmoqda...")
         shazam = Shazam()
         recognition_result = await shazam.recognize(audio_extraction_path)
         
@@ -269,7 +309,7 @@ async def recognize_and_offer_song_download(status_message: Message, video_filep
 
             song_details_payload = f"{song_title} - {song_artist}"
             keyboard = [
-                [InlineKeyboardButton(f"🎵 Yuklash: {song_artist} - {song_title}", callback_data=f'download_song|{song_details_payload}')]
+                [InlineKeyboardButton(f" Yuklash: {song_artist} - {song_title}", callback_data=f'download_song|{song_details_payload}')]
             ]
             return InlineKeyboardMarkup(keyboard)
         else:
@@ -280,84 +320,183 @@ async def recognize_and_offer_song_download(status_message: Message, video_filep
     except ffmpeg.Error as e:
         error_details = e.stderr.decode('utf-8', errors='ignore') if e.stderr else "No details"
         logger.error(f"ffmpeg error during audio extraction: {error_details}")
-        await status_message.edit_text("❌ Audio ajratib olishda xatolik.")
+        await status_message.edit_text(" Audio ajratib olishda xatolik.")
         return None
     except Exception as e:
         logger.error(f"Error in recognize_and_offer_song_download: {e}", exc_info=True)
-        await status_message.edit_text("❌ Musiqani aniqlashda kutilmagan xatolik.")
+        await status_message.edit_text(" Musiqani aniqlashda kutilmagan xatolik.")
         return None
     finally:
         if os.path.exists(audio_extraction_path):
             os.remove(audio_extraction_path)
 
 
+async def _generate_stats_message_and_keyboard(page: int) -> (str, Optional[InlineKeyboardMarkup]):
+    """Generates the text and keyboard for a given stats page."""
+    total_users = database.get_total_user_count()
+    users = database.get_users_paginated(page)
+    limit = 10
+    total_pages = (total_users + limit - 1) // limit
+
+    if not users and page == 1:
+        return "Hozircha foydalanuvchilar yo'q.", None
+
+    if not users and page > 1:
+        return "Bu sahifada foydalanuvchilar yo'q.", None
+
+
+    message_text = f"📊 **Bot Foydalanuvchilari (Jami: {total_users})**\n\n"
+    message_text += f"Sahifa: {page}/{total_pages}\n\n"
+
+    for user_data in users:
+        # user_data is a tuple: (id, user_id, first_name, last_name, username, first_seen, last_seen)
+        uid, user_id_db, first_name, last_name, username, first_seen, last_seen = user_data
+        
+        # Create a user-friendly name
+        full_name = (first_name or "") + (" " + last_name if last_name else "")
+        display_name = html.escape(full_name.strip())
+        
+        # Create a mention link
+        user_link = f"<a href='tg://user?id={user_id_db}'>{display_name}</a>"
+        
+        # Add username if available
+        if username:
+            message_text += f"• {user_link} (@{html.escape(username)})\n"
+        else:
+            message_text += f"• {user_link}\n"
+        
+        message_text += f"  └ 🕒 Oxirgi faollik: {last_seen}\n"
+
+    # Create pagination buttons
+    keyboard = []
+    row = []
+    if page > 1:
+        row.append(InlineKeyboardButton("⬅️ Oldingisi", callback_data=f"stats_page_{page-1}"))
+    if page < total_pages:
+        row.append(InlineKeyboardButton("Keyingisi ➡️", callback_data=f"stats_page_{page+1}"))
+    
+    if row:
+        keyboard.append(row)
+
+    reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+    return message_text, reply_markup
+
+
+# --- Admin Stats Functionality ---
+@register_user
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Displays user statistics, paginated. Admin only."""
+    user = update.effective_user
+    if not user or user.id != ADMIN_ID:
+        await update.message.reply_text("Kechirasiz, bu buyruq faqat admin uchun.")
+        return
+
+    page = 1
+    if context.args:
+        try:
+            page = int(context.args[0])
+        except (ValueError, IndexError):
+            page = 1
+    
+    message_text, reply_markup = await _generate_stats_message_and_keyboard(page)
+    await update.message.reply_text(message_text, parse_mode='HTML', reply_markup=reply_markup)
+
+
+@register_user
 async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles button clicks for downloading songs."""
+    """Handles button clicks for stats pagination and downloading songs."""
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
-    song_audio_path = None
+    data = query.data
+    logger.info(f"Button callback with data: {data}")
 
-    try:
-        action, song_details_payload = query.data.split('|', 1)
-        
-        if action == 'download_song':
-            song_title, song_artist = song_details_payload.split(' - ', 1)
-            search_query = f"{song_artist} - {song_title}"
+    # --- Stats Pagination Logic ---
+    if data.startswith("stats_page_"):
+        user = query.from_user
+        if not user or user.id != ADMIN_ID:
+            await query.answer("Kechirasiz, bu funksiya faqat admin uchun.", show_alert=True)
+            return
             
-            status_message = await context.bot.send_message(chat_id=query.message.chat_id, text=f"'{search_query}' yuklanmoqda... 0%")
-            
-            # Use query.id for a unique ID in callbacks
-            song_output_template = os.path.join(DOWNLOAD_PATH, f'{user_id}_{query.id}_%(title)s_audio.%(ext)s')
-            
-            song_download_command = [
-                'yt-dlp',
-                '--extract-audio', '--audio-format', 'mp3', '--audio-quality', '0',
-                '--output', song_output_template,
-                '--max-filesize', '20m',
-                f'ytsearch1:{search_query}'
-            ]
-            if YOUTUBE_COOKIES:
-                song_download_command.extend(['--cookies', COOKIE_FILE_PATH])
-
-            return_code, stderr_output = await _run_yt_dlp_with_progress(song_download_command, status_message, f"'{search_query}' yuklanmoqda...")
-
-            if return_code == 0:
-                song_audio_path = find_first_file(DOWNLOAD_PATH, f'{user_id}_{query.id}_')
-                
-                if song_audio_path:
-                    try:
-                        with open(song_audio_path, 'rb') as audio_file:
-                            await context.bot.send_audio(
-                                chat_id=query.message.chat_id,
-                                audio=audio_file,
-                                title=song_title,
-                                performer=song_artist,
-                                filename=f"{song_artist} - {song_title}.mp3"
-                            )
-                        await status_message.delete()
-                    except Exception as e:
-                        logger.error(f"Error sending downloaded song: {e}")
-                        await status_message.edit_text("Yuklab olingan qo'shiqni yuborishda xatolik yuz berdi.")
-                else:
-                    logger.error("Song downloaded but file not found.")
-                    await status_message.edit_text("Qo'shiq yuklandi, lekin faylni topishda muammo bo'ldi.")
-            else:
-                logger.error(f"Song download failed (yt-dlp): {stderr_output}")
-                await status_message.edit_text("Afsuski, qo'shiqni yuklab bo'lmadi. Boshqa manba bilan harakat qilib ko'ring.")
-
-    except Exception as e:
-        logger.error(f"Tugma bosishni qayta ishlashda xatolik: {e}", exc_info=True)
         try:
-            await query.message.reply_text("Kechirasiz, so'rovingizni qayta ishlashda kutilmagan xatolik yuz berdi.")
-        except Exception as reply_e:
-            logger.error(f"Xatolik haqida xabar yuborishda xatolik: {reply_e}")
-    finally:
-        if song_audio_path and os.path.exists(song_audio_path):
-            os.remove(song_audio_path)
+            page = int(data.split("_")[2])
+        except (ValueError, IndexError):
+            await query.edit_message_text("Sahifa raqamida xatolik.")
+            return
+
+        message_text, reply_markup = await _generate_stats_message_and_keyboard(page)
+        
+        try:
+            await query.edit_message_text(message_text, parse_mode='HTML', reply_markup=reply_markup)
+        except Exception as e:
+            logger.error(f"Failed to edit stats message: {e}")
+
+    # --- Song Download Logic ---
+    elif data.startswith("download_song|"):
+        user_id = query.from_user.id
+        song_audio_path = None
+        try:
+            action, song_details_payload = data.split('|', 1)
+            
+            if action == 'download_song':
+                # Remove button after click to prevent multiple downloads
+                await query.edit_message_reply_markup(reply_markup=None) 
+                
+                song_title, song_artist = song_details_payload.split(' - ', 1)
+                search_query = f"{song_artist} - {song_title}"
+                
+                status_message = await context.bot.send_message(chat_id=query.message.chat_id, text=f"'{search_query}' yuklanmoqda... 0%")
+                
+                song_output_template = os.path.join(DOWNLOAD_PATH, f'{user_id}_{query.id}_%(title)s_audio.%(ext)s')
+                
+                song_download_command = [
+                    'yt-dlp',
+                    '--extract-audio', '--audio-format', 'mp3', '--audio-quality', '0',
+                    '--output', song_output_template,
+                    '--max-filesize', '20m',
+                    f'ytsearch1:{search_query}'
+                ]
+                if YOUTUBE_COOKIES:
+                    song_download_command.extend(['--cookies', COOKIE_FILE_PATH])
+
+                return_code, stderr_output = await _run_yt_dlp_with_progress(song_download_command, status_message, f"'{search_query}' yuklanmoqda...")
+
+                if return_code == 0:
+                    song_audio_path = find_first_file(DOWNLOAD_PATH, f'{user_id}_{query.id}_')
+                    
+                    if song_audio_path:
+                        try:
+                            with open(song_audio_path, 'rb') as audio_file:
+                                await context.bot.send_audio(
+                                    chat_id=query.message.chat_id,
+                                    audio=audio_file,
+                                    title=song_title,
+                                    performer=song_artist,
+                                    filename=f"{song_artist} - {song_title}.mp3"
+                                )
+                            await status_message.delete()
+                        except Exception as e:
+                            logger.error(f"Error sending downloaded song: {e}")
+                            await status_message.edit_text("Yuklab olingan qo'shiqni yuborishda xatolik yuz berdi.")
+                    else:
+                        logger.error("Song downloaded but file not found.")
+                        await status_message.edit_text("Qo'shiq yuklandi, lekin faylni topishda muammo bo'ldi.")
+                else:
+                    logger.error(f"Song download failed (yt-dlp): {stderr_output}")
+                    await status_message.edit_text("Afsuski, qo'shiqni yuklab bo'lmadi. Boshqa manba bilan harakat qilib ko'ring.")
+
+        except Exception as e:
+            logger.error(f"Tugma bosishni qayta ishlashda xatolik: {e}", exc_info=True)
+            try:
+                await query.message.reply_text("Kechirasiz, so'rovingizni qayta ishlashda kutilmagan xatolik yuz berdi.")
+            except Exception as reply_e:
+                logger.error(f"Xatolik haqida xabar yuborishda xatolik: {reply_e}")
+        finally:
+            if song_audio_path and os.path.exists(song_audio_path):
+                os.remove(song_audio_path)
+
 
 # --- Transcriber Functionality ---
-
+@register_user
 async def handle_media_for_transcription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles audio and video messages for transcription."""
     message = update.message
@@ -426,7 +565,7 @@ async def handle_media_for_transcription(update: Update, context: ContextTypes.D
         if output_audio_path and os.path.exists(output_audio_path):
             os.remove(output_audio_path)
 
-# ... (unchanged code below)
+
 def main() -> None:
     """Start the bot."""
     # Create the Application and pass it your bot's token.
@@ -435,14 +574,15 @@ def main() -> None:
     # on different commands - answer in Telegram
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("stats", stats))
 
     # on non command i.e message - download the video from the message.
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
 
-    # Add a handler for button clicks (for downloading songs)
+    # Add a handler for button clicks
     application.add_handler(CallbackQueryHandler(button_callback_handler))
 
-    # Yangi transkripsiya funksiyasi uchun handler
+    # Handler for transcription
     application.add_handler(MessageHandler(filters.AUDIO | filters.VIDEO | filters.VOICE, handle_media_for_transcription))
 
     # Run the bot until the user presses Ctrl-C
