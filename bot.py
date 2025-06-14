@@ -400,24 +400,25 @@ async def handle_media_for_transcription(update: Update, context: ContextTypes.D
         full_transcript_parts = []
         last_edit_time = time.time()
         
-        async for chunk_text, current_chunk, total_chunks in transcribe_audio_from_file(audio_path_to_transcribe):
-            full_transcript_parts.append(chunk_text)
+        async for text_chunk in transcribe_audio_from_file(audio_path_to_transcribe):
+            full_transcript_parts.append(text_chunk)
             
             current_time = time.time()
+            # Xabarni har 1.5 soniyada yoki har yangi qism kelganda yangilash
             if current_time - last_edit_time > 1.5:
-                current_full_text = "\n\n".join(full_transcript_parts)
-                header = f"📝 Transkripsiya jarayonda... [{current_chunk}/{total_chunks}]\n---\n"
+                current_full_text = " ".join(full_transcript_parts)
+                header = f"📝 Transkripsiya jarayonda...\n---\n"
                 
                 try:
-                    await status_message.edit_text(f"{header}{current_full_text}", parse_mode='Markdown')
+                    await status_message.edit_text(f"{header}{current_full_text}")
                     last_edit_time = current_time
                 except Exception as e:
                     if "Message is not modified" not in str(e):
                         logger.warning(f"Xabarni tahrirlashda xatolik: {e}")
 
         if full_transcript_parts:
-            final_text = "\n\n".join(full_transcript_parts)
-            header = f"✅ Transkripsiya muvaffaqiyatli yakunlandi!\n\n**Manba:** `wit.ai`\n---\n"
+            final_text = " ".join(full_transcript_parts)
+            header = f"✅ Transkripsiya muvaffaqiyatli yakunlandi!\n\n**Manba:** `faster-whisper (base)`\n---\n"
             await status_message.edit_text(header + final_text, parse_mode='Markdown')
         else:
             await status_message.edit_text("Matn aniqlanmadi. Audio bo'sh yoki unda nutq bo'lmasligi mumkin.")
