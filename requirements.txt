@@ -4,4 +4,5 @@ shazamio==0.6.0
 yt-dlp==2025.6.9
 ffmpeg-python==0.2.0
 wit==6.0
+pydub==0.25.1
 av
