@@ -279,6 +279,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             'yt-dlp',
             '--quiet',
             '--no-warnings',
+            '--format', 'bestaudio/best', # Eng yaxshi audioni tanlash / topa olmasa eng yaxshi formatni olish
             '--extract-audio',
             '--audio-format', 'mp3',
             '--audio-quality', '0', # Best quality
@@ -336,9 +337,9 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             else:
                 error_output = stderr.decode(errors='ignore')
                 logger.error(f"yt-dlp failed for song search '{search_query}'. Error: {error_output}")
-                error_text = "Kechirasiz, qo'shiqni yuklab ololmadim. Bu manbadagi vaqtinchalik muammo bo'lishi mumkin. Iltimos, keyinroq qayta urinib ko'ring."
+                error_text = f"Kechirasiz, '{search_query}' nomli qo'shiqni yuklab bo'lmadi. Bu manbadagi vaqtinchalik muammo bo'lishi mumkin."
                 if "Requested format is not available" in error_output:
-                    error_text = "Kechirasiz, bu qo'shiq uchun mos audio format topilmadi. Boshqa videoni sinab ko'ring."
+                    error_text = f"Kechirasiz, '{search_query}' uchun mos audio format topilmadi. Boshqa videoni sinab ko'ring."
                 
                 if status_message:
                     await status_message.edit_text(text=error_text)
