@@ -356,11 +356,10 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         if song_audio_path and os.path.exists(song_audio_path):
             os.remove(song_audio_path)
 
-
 # --- Transcriber Functionality ---
 
 async def handle_media_for_transcription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles audio and video messages for transcription with progressive updates."""
+    """Handles audio and video messages for transcription."""
     message = update.message
     user_id = message.from_user.id
     file_to_download = message.audio or message.video or message.voice
@@ -370,7 +369,9 @@ async def handle_media_for_transcription(update: Update, context: ContextTypes.D
     if not file_to_download:
         return
 
-    status_message = await message.reply_text("Fayl qabul qilindi. Tayyorlanmoqda...")
+    status_message = await message.reply_text(
+        "Fayl qabul qilindi. Ovozni matnga o'girish uchun tayyorlanmoqda..."
+    )
 
     try:
         file_id = file_to_download.file_id
@@ -383,56 +384,49 @@ async def handle_media_for_transcription(update: Update, context: ContextTypes.D
 
         audio_path_to_transcribe = downloaded_file_path
 
+        # If it's a video, extract audio
         if message.video:
             await status_message.edit_text("Videodan audio ajratib olinmoqda...")
             output_audio_path = os.path.join(DOWNLOAD_PATH, f"{user_id}_{file_id}_extracted_audio.mp3")
             try:
+                # Run ffmpeg non-blocking
                 await _run_ffmpeg_async(functools.partial(ffmpeg.input(downloaded_file_path).output(output_audio_path, acodec='libmp3lame', ar='16000').run, overwrite_output=True, quiet=True))
                 audio_path_to_transcribe = output_audio_path
                 logger.info(f"Audio extracted successfully: {output_audio_path}")
             except ffmpeg.Error as e:
-                logger.error(f"ffmpeg error: {e.stderr.decode() if e.stderr else 'Unknown'}")
+                error_details = e.stderr.decode() if e.stderr else "Unknown error"
+                logger.error(f"ffmpeg error: {error_details}")
                 await status_message.edit_text("Videodan audioni ajratib olishda xatolik yuz berdi.")
                 return
 
-        await status_message.edit_text("Audio tahlil qilinmoqda... ⏳")
-        
-        full_transcript_parts = []
-        last_edit_time = time.time()
-        
-        async for text_chunk in transcribe_audio_from_file(audio_path_to_transcribe):
-            full_transcript_parts.append(text_chunk)
-            
-            current_time = time.time()
-            # Xabarni har 1.5 soniyada yoki har yangi qism kelganda yangilash
-            if current_time - last_edit_time > 1.5:
-                current_full_text = " ".join(full_transcript_parts)
-                header = f"📝 Transkripsiya jarayonda...\n---\n"
-                
-                try:
-                    await status_message.edit_text(f"{header}{current_full_text}")
-                    last_edit_time = current_time
-                except Exception as e:
-                    if "Message is not modified" not in str(e):
-                        logger.warning(f"Xabarni tahrirlashda xatolik: {e}")
+        # Transcribe the audio
+        await status_message.edit_text("Audio tahlil qilinmoqda... Bu biroz vaqt olishi mumkin.")
+        language, transcript = await transcribe_audio_from_file(audio_path_to_transcribe)
 
-        if full_transcript_parts:
-            final_text = " ".join(full_transcript_parts)
-            header = f"✅ Transkripsiya muvaffaqiyatli yakunlandi!\n\n**Manba:** `faster-whisper (base)`\n---\n"
-            await status_message.edit_text(header + final_text, parse_mode='Markdown')
+        if transcript and language and language != 'n/a':
+            header = f"✅ Transkripsiya muvaffaqiyatli yakunlandi!\n\n**Aniqlangan til:** `{language.upper()}`\n---\n"
+            # Telegram xabarining maksimal uzunligi 4096 belgi
+            if len(header) + len(transcript) > 4096:
+                # Agar matn uzun bo'lsa, uni qismlarga bo'lib yuborish
+                await status_message.edit_text(header, parse_mode='Markdown')
+                for i in range(0, len(transcript), 4096):
+                    await update.message.reply_text(transcript[i:i+4096])
+            else:
+                await status_message.edit_text(header + transcript, parse_mode='Markdown')
         else:
-            await status_message.edit_text("Matn aniqlanmadi. Audio bo'sh yoki unda nutq bo'lmasligi mumkin.")
+            await status_message.edit_text(transcript or "Noma'lum xatolik yuz berdi yoki matn aniqlanmadi.")
 
     except Exception as e:
-        logger.error(f"Transkripsiya jarayonida umumiy xatolik: {e}", exc_info=True)
+        logger.error(f"General error in transcription process: {e}", exc_info=True)
         await status_message.edit_text("Kechirasiz, faylni qayta ishlashda kutilmagan xatolik yuz berdi.")
     finally:
+        # Clean up temporary files
         if downloaded_file_path and os.path.exists(downloaded_file_path):
             os.remove(downloaded_file_path)
         if output_audio_path and os.path.exists(output_audio_path):
             os.remove(output_audio_path)
 
-
+# ... (unchanged code below)
 def main() -> None:
     """Start the bot."""
     # Create the Application and pass it your bot's token.

@@ -1,13 +1,6 @@
-python-telegram-bot
-python-dotenv
-youtube-dl
-pydub
+python-telegram-bot[ext]
+shazamio
 ffmpeg-python
-httpx
+python-dotenv
+yt-dlp
 faster-whisper
-torch
-torchaudio==2025.6.9
-ffmpeg-python==0.2.0
-wit==6.0
-pydub==0.25.1
-av
