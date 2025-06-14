@@ -201,9 +201,14 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.info(f"Sending video {video_path} with caption '{os.path.basename(video_path)}' and reply_markup: {inline_markup_for_video is not None}")
         with open(video_path, 'rb') as video_file:
             # We send the video as a reply to the original user message
+            # Extract a clean caption from the filename, removing the user/update IDs
+            filename_parts = os.path.basename(video_path).split('_')
+            # The original title might contain underscores, so we join all parts after the IDs
+            clean_caption = " ".join(filename_parts[2:])
+
             await update.message.reply_video(
                 video=video_file,
-                caption=os.path.basename(video_path),
+                caption=clean_caption,
                 reply_markup=inline_markup_for_video # This will have the button if a song was found
             )
         
@@ -304,7 +309,6 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                 '--extract-audio', '--audio-format', 'mp3', '--audio-quality', '0',
                 '--output', song_output_template,
                 '--max-filesize', '20m',
-                '--max-duration', '600',
                 f'ytsearch1:{search_query}'
             ]
             if YOUTUBE_COOKIES:
