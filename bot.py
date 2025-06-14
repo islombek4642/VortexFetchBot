@@ -7,6 +7,8 @@ import time
 import asyncio
 import pathlib # For creating file URIs
 from typing import Optional
+from datetime import datetime
+import pytz
 from dotenv import load_dotenv # Added for .env support
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
@@ -348,24 +350,38 @@ async def _generate_stats_message_and_keyboard(page: int) -> (str, Optional[Inli
     message_text = f"📊 **Bot Foydalanuvchilari (Jami: {total_users})**\n\n"
     message_text += f"Sahifa: {page}/{total_pages}\n\n"
 
+    tashkent_tz = pytz.timezone('Asia/Tashkent')
+
     for user_data in users:
         # user_data is a tuple: (user_id, first_name, last_name, username, first_seen, last_seen)
         user_id_db, first_name, last_name, username, first_seen, last_seen = user_data
         
         # Create a user-friendly name
         full_name = (first_name or "") + (" " + last_name if last_name else "")
+        if not full_name.strip():
+            full_name = "Unknown"
         display_name = html.escape(full_name.strip())
-        
+
+        # --- Timezone Conversion ---
+        try:
+            last_seen_dt = datetime.strptime(last_seen, "%Y-%m-%d %H:%M:%S")
+            last_seen_utc = pytz.utc.localize(last_seen_dt)
+            last_seen_tashkent = last_seen_utc.astimezone(tashkent_tz)
+            last_seen_formatted = last_seen_tashkent.strftime("%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            last_seen_formatted = last_seen # Fallback in case of error
+
         # Create a mention link
         user_link = f"<a href='tg://user?id={user_id_db}'>{display_name}</a>"
         
-        # Add username if available
+        # Add user info to message
         if username:
             message_text += f"• {user_link} (@{html.escape(username)})\n"
         else:
             message_text += f"• {user_link}\n"
         
-        message_text += f"  └ 🕒 Oxirgi faollik: {last_seen}\n"
+        # Add last seen time in the new format
+        message_text += f"  └ 🕒 Oxirgi faollik: {last_seen_formatted}\n"
 
     # Create pagination buttons
     keyboard = []
