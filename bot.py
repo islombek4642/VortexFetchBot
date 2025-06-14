@@ -242,7 +242,7 @@ async def recognize_and_offer_song_download(update: Update, context: ContextType
         stream = ffmpeg.output(stream, audio_extraction_path, acodec='aac', ar='44100', ab='192k')
         stream = ffmpeg.overwrite_output(stream)
         
-        process = await ffmpeg.run_async(stream, pipe_stderr=True, quiet=True)
+        process = ffmpeg.run_async(stream, pipe_stderr=True, quiet=True)
         _, stderr = await process.communicate()
 
         if process.returncode != 0:
