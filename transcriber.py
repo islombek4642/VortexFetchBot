@@ -4,10 +4,10 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# Aniqlikni oshirish uchun "medium" modelidan foydalanamiz.
-# Bu model "base"ga qaraganda ancha aniqroq, lekin ko'proq resurs talab qiladi.
+# "small" modelini sinab ko'ramiz - bu aniqlik va resurslar o'rtasidagi yaxshi muvozanat.
+# Bu "base"dan aniqroq va "medium"dan kamroq resurs talab qiladi.
 # Birinchi ishga tushganda, bu modelni yuklab oladi.
-MODEL_SIZE = "medium"
+MODEL_SIZE = "small"
 COMPUTE_TYPE = "int8" # CPU uchun optimizatsiya
 
 try:
