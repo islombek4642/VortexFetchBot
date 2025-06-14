@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+import collections.abc
 from wit import Wit
 from dotenv import load_dotenv
 from pydub import AudioSegment
@@ -36,7 +37,11 @@ async def _transcribe_chunk(chunk_path: str, index: int) -> str:
         with open(chunk_path, 'rb') as audio_file:
             resp = wit_client.speech(audio_file, {'Content-Type': 'audio/mpeg'})
             if resp:
-                return next(resp, None)
+                # Wit.ai ba'zan iterator (generator) o'rniga to'g'ridan-to'g'ri dict qaytarishi mumkin.
+                # Ikkala holatni ham to'g'ri ishlash uchun tekshiramiz.
+                if isinstance(resp, collections.abc.Iterator):
+                    return next(resp, None)
+                return resp  # Agar dict bo'lsa, o'zini qaytaramiz
             return None
 
     try:
@@ -68,8 +73,8 @@ async def transcribe_audio_from_file(audio_path: str) -> (str, str):
         logger.info(f"'{audio_path}' fayli ochilmoqda va bo'laklarga bo'linmoqda...")
         audio = AudioSegment.from_file(audio_path)
         
-        # Wit.ai uchun optimal bo'lak hajmi ~20 soniya
-        chunk_length_ms = 20 * 1000 
+        # Timeout xatosini oldini olish uchun bo'lak hajmini kichraytiramiz
+        chunk_length_ms = 15 * 1000 
         chunks = make_chunks(audio, chunk_length_ms)
         
         if not chunks:
