@@ -1,4 +1,13 @@
-# This file tells Railway to install system-level packages.
+# Bu fayl Railway'ga tizim darajasidagi paketlarni o'rnatishni aytadi.
 [phases.setup]
-# We need ffmpeg for audio processing and python 3.10 for the build.
-nixPkgs = ["ffmpeg", "python310"]
+# Audio qayta ishlash uchun ffmpeg va Python 3.10 kerak bo'ladi.
+# Shuningdek, yt-dlp uchun kerak bo'ladigan qo'shimcha paketlar
+nixPkgs = ["ffmpeg", "python310", "yt-dlp", "git"]
+
+[phases.install]
+# Python paketlarini o'rnatish
+cmds = ["pip install -r requirements.txt"]
+
+[phases.start]
+# Botni ishga tushirish
+cmd = "python bot.py"

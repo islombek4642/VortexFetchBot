@@ -31,19 +31,19 @@ if not TOKEN:
 DOWNLOAD_PATH = 'downloads'
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Sends a welcome message when the /start command is issued."""
+    """/start komandasi yuborilganda xush kelibsiz xabarini yuboradi."""
     user = update.effective_user
     await update.message.reply_html(
-        rf"Hi {user.mention_html()}! Send me a video link and I'll try to download it for you.",
+        rf"Salom {user.mention_html()}! Menga video havolasini yuboring va men uni siz uchun yuklab beraman.",
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Sends a help message when the /help command is issued."""
+    """/help komandasi yuborilganda yordam xabarini yuboradi."""
     await update.message.reply_text(
-        "Send me a link to a video from a supported platform (like YouTube, Vimeo, etc.), "
-        "and I will try to download it and send it back to you.\n\n"
-        "Supported sites are numerous, thanks to yt-dlp. "
-        "Large videos might take time or fail due to Telegram's file size limits."
+        "Menga qo'llab-quvvatlanadigan platformalardan (masalan, YouTube, Instagram, TikTok, va boshqalar) "
+        "video havolasini yuboring, men uni yuklab, sizga yuboraman.\n\n"
+        "Yuklab olish uchun yt-dlp kutubxonasidan foydalaniladi. "
+        "Katta hajmli videolar yuklab olinmaganligi yoki vaqt talab qilishi mumkin."
     )
 
 async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -53,10 +53,10 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     url = update.message.text
     chat_id = update.message.chat_id
 
-    status_message = await update.message.reply_text("Processing your request... Please wait.")
+    status_message = await update.message.reply_text("So'rovingiz qayta ishlanmoqda... Iltimos kuting.")
 
     if not url or not (url.startswith('http://') or url.startswith('https://')):
-        await status_message.edit_text("Please send a valid video URL.")
+        await status_message.edit_text("Iltimos, to'g'ri video havolasini yuboring.")
         return
 
     # Create download directory if it doesn't exist
@@ -104,7 +104,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 logger.error(f"yt-dlp finished but no file found for URL: {url}")
                 logger.error(f"yt-dlp stdout: {stdout.decode(errors='ignore')}")
                 logger.error(f"yt-dlp stderr: {stderr.decode(errors='ignore')}")
-                await update.message.reply_text("Sorry, I couldn't download the video or no suitable format was found within size limits.")
+                await update.message.reply_text("Videoni yuklab olishning iloji bo'lmadi yoki hajm chegarasiga to'g'ri keladigan format topilmadi.")
                 return
 
             # Assuming the first (or newest) mp4 file is the one we want.
@@ -112,7 +112,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             video_path = max(downloaded_files, key=os.path.getctime) # Get the newest file
             
             logger.info(f"Successfully downloaded video to: {video_path}")
-            await status_message.edit_text(f"Download complete! Preparing video and checking for music...")
+            await status_message.edit_text(f"Yuklab olish yakunlandi! Video tayyorlanmoqda va musiqa tekshirilmoqda...")
 
             # Perform song recognition BEFORE sending video
             inline_markup_for_video: Optional[InlineKeyboardMarkup] = None
@@ -134,19 +134,19 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         else:
             error_message = stderr.decode(errors='ignore')
             logger.error(f"yt-dlp failed for URL: {url}. Error: {error_message}")
-            reply_text = f"Sorry, I couldn't download the video. Error from downloader: {error_message[:1000]}"
+            reply_text = f"Kechirasiz, videoni yuklab olishda xatolik yuz berdi: {error_message[:1000]}"
             if "File is larger than max-filesize" in error_message:
-                reply_text = "The video is too large to download within the set limits (max 50MB for Telegram)."
+                reply_text = "Video juda katta hajmli (maksimal 50MB). Kichikroq videoni yuboring yoki boshqa formatda urinib ko'ring."
             elif "Unsupported URL" in error_message:
-                reply_text = "The provided URL is not supported."
+                reply_text = "Kechirasiz, berilgan havola qo'llab-quvvatlanmaydi."
             await status_message.edit_text(reply_text)
 
     except Exception as e:
         logger.error(f"An error occurred during video download process for {url}: {e}")
         if status_message:
-            await status_message.edit_text(f"An unexpected error occurred: {e}")
+            await status_message.edit_text(f"Kutilmagan xatolik yuz berdi: {e}")
         else:
-            await update.message.reply_text(f"An unexpected error occurred: {e}") # Fallback if status_message not set
+            await update.message.reply_text(f"Kutilmagan xatolik yuz berdi: {e}") # Fallback if status_message not set
     finally:
         # Clean up the downloaded file
         if video_path and os.path.exists(video_path): # Check if video_path was assigned and exists
@@ -184,12 +184,12 @@ async def recognize_and_offer_song_download(update: Update, context: ContextType
 
         if extract_process.returncode != 0:
             logger.error(f"Failed to extract audio. stderr: {extract_stderr.decode(errors='ignore')}")
-            await update.message.reply_text("Could not extract audio to identify music.")
+            await update.message.reply_text("Musiqani aniqlash uchun audio qismini ajratib bo'lmadi.")
             return
         
         if not os.path.exists(audio_extraction_path):
             logger.error(f"Audio extraction finished but file not found: {audio_extraction_path}")
-            await update.message.reply_text("Audio extraction seemed to work, but the audio file is missing.")
+            await update.message.reply_text("Audio ajratildi, lekin audio fayli topilmadi.")
             return
 
         # 2. Recognize song using shazamio
@@ -247,7 +247,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         action, song_details_payload = query.data.split('|', 1)
     except ValueError:
         logger.error(f"Invalid callback data format: {query.data}")
-        await query.edit_message_text(text="Error: Invalid request data.")
+        await query.edit_message_text(text="Xato: Noto'g'ri musiqa ma'lumoti.")
         return
 
     if action == "download_song":

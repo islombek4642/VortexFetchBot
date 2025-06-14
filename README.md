@@ -1,33 +1,33 @@
-# Universal Video Downloader Telegram Bot
+# Universal Video Yuklovchi Telegram Bot
 
-A Telegram bot that downloads videos from various platforms using `yt-dlp`.
+`yt-dlp` yordamida turli platformalardan videolarni yuklab beruvchi Telegram boti.
 
-## Features
+## Imkoniyatlar
 
--   Download videos by sending a URL to the bot.
--   Supports a wide range of websites (thanks to `yt-dlp`).
--   Attempts to download videos in MP4 format, up to 720p, and under 50MB (Telegram's bot API limit for sending files).
+-   Botga URL yuborish orqali videolarni yuklab olish.
+-   Keng ko'lamli veb-saytlarni qo'llab-quvvatlaydi (`yt-dlp` tufayli).
+-   Videolarni MP4 formatida, maksimal 720p sifatida va 50MB dan oshmasligiga harakat qiladi (Telegram bot API chegarasi).
 
-## Prerequisites
+## Talablar
 
--   Python 3.8+
--   `yt-dlp` installed and accessible in your system's PATH (or specify the path if needed).
-    -   You can install `yt-dlp` via pip: `pip install yt-dlp`
-    -   Alternatively, download the executable from [yt-dlp GitHub releases](https://github.com/yt-dlp/yt-dlp/releases) and ensure it's in your PATH.
--   A Telegram Bot Token.
+-   Python 3.8+ kerak bo'ladi
+-   Tizimingizda `yt-dlp` o'rnatilgan va PATH'da mavjud bo'lishi kerak:
+    -   `yt-dlp` ni pip orqali o'rnatish: `pip install yt-dlp`
+    -   Yoki [yt-dlp GitHub releases](https://github.com/yt-dlp/yt-dlp/releases) dan yuklab oling va PATH'ga qo'shing.
+-   Telegram Bot Tokeni kerak bo'ladi.
 
-## Setup
+## O'rnatish
 
-1.  **Clone the repository (or create the files as provided):**
+1.  **Repozitoriyani klonlang yoki fayllarni yarating:**
     ```bash
-    # If you had a git repo, you'd clone it here.
-    # For now, ensure bot.py, requirements.txt are in a directory.
+    # Git repozitoriyangiz bo'lsa, shu yerda klon qilishingiz mumkin.
+    # Hozircha bot.py, requirements.txt fayllari papkada ekanligiga ishonch hosil qiling.
     ```
 
-2.  **Create a virtual environment (recommended):**
+2.  **Virtual muhit yarating (tavsiya etiladi):**
     ```bash
     python -m venv venv
-    source venv/bin/activate  # On Windows: venv\Scripts\activate
+    source venv/bin/activate  # Windowsda: venv\Scripts\activate
     ```
 
 3.  **Install dependencies:**

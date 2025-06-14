@@ -2,3 +2,4 @@ python-telegram-bot==21.2
 python-dotenv==1.0.1
 shazamio==0.5.1
 yt-dlp==2025.6.9
+ffmpeg-python==0.2.0
