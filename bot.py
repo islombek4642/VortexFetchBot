@@ -203,7 +203,7 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await context.bot.send_video(
                 chat_id=chat_id,
                 video=video_file,
-                video_filename=os.path.basename(video_path),
+                filename=os.path.basename(video_path),
                 caption=" ".join(os.path.basename(video_path).split('_')[2:]),
                 reply_markup=inline_markup_for_video # Attach button here if available
             )
