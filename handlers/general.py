@@ -11,6 +11,7 @@ from telegram.ext import ContextTypes
 from shazamio import Shazam
 from urllib.parse import urlparse, parse_qs
 from youtubesearchpython import VideosSearch
+from yt_dlp import YoutubeDL
 
 from config import settings, logger
 from utils.decorators import register_user
@@ -100,27 +101,23 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 # --- Helper Functions (Business Logic) ---
 
-async def search_youtube_link(query: str):
-    try:
-        videos_search = VideosSearch(query, limit=5)
-        result = await asyncio.to_thread(videos_search.next)
-        found = []
-        if result and result.get('result'):
-            logger.info(f"YouTube qidiruv natijalari: {[v['title'] for v in result['result']]}")
-            for video in result['result']:
-                title = video.get('title', '').lower()
-                channel = video.get('channel', {}).get('name', '').lower()
-                if any(word in title for word in ['official', 'audio', 'topic']) or any(word in channel for word in ['official', 'audio', 'topic']):
-                    found.append({'title': video['title'], 'link': video['link']})
-            # Agar mos natijalar topilmasa, birinchi 3 natijani qaytaramiz
-            if not found:
-                for video in result['result'][:3]:
-                    found.append({'title': video['title'], 'link': video['link']})
-        return found
-    except Exception as e:
-        logger.error(f"YouTube search failed: {e}")
-    return []
-
+def search_youtube_with_ytdlp(query: str) -> str | None:
+    ydl_opts = {
+        'quiet': True,
+        'skip_download': True,
+        'format': 'bestaudio/best',
+        'noplaylist': True,
+        'default_search': 'ytsearch',
+        'extract_flat': 'in_playlist'
+    }
+    with YoutubeDL(ydl_opts) as ydl:
+        try:
+            result = ydl.extract_info(query, download=False)
+            if 'entries' in result and result['entries']:
+                return f"https://www.youtube.com/watch?v={result['entries'][0]['id']}"
+        except Exception as e:
+            logger.error(f"yt-dlp YouTube search error: {e}")
+    return None
 
 async def _download_video_from_url(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Core logic to download a video from a given URL."""
@@ -308,32 +305,28 @@ async def _recognize_and_offer_song_download(
         title = track_info.get('title', "Noma'lum")
         full_title = f"{subtitle} - {title}"
         youtube_source = None
-        youtube_results = []
 
         if youtube_url:
             youtube_source = "Shazam orqali topildi"
-            youtube_results = [{'title': full_title, 'link': youtube_url}]
         else:
             logger.info(f"Shazam'dan YouTube havolasi topilmadi. '{full_title}' uchun YouTube'da qidirilmoqda...")
-            youtube_results = await search_youtube_link(full_title)
-            if youtube_results:
-                youtube_source = "YouTube qidiruvi orqali topildi"
+            youtube_url = search_youtube_with_ytdlp(full_title)
+            if youtube_url:
+                youtube_source = "YouTube qidiruvi (yt-dlp) orqali topildi"
 
         logger.info(f"Song recognized: {full_title}")
-        if youtube_results:
+        if youtube_url:
             await status_message.edit_text(
                 f"🎶 Qo'shiq topildi: <b>{html.escape(full_title)}</b>\n<i>{youtube_source}</i>", parse_mode='HTML'
             )
-            # Bir nechta natija uchun tugmalar
-            buttons = []
-            for res in youtube_results[:3]:
-                song_id = str(uuid.uuid4())
-                context.bot_data[song_id] = {
-                    'full_title': res['title'],
-                    'youtube_url': res['link']
-                }
-                buttons.append([InlineKeyboardButton(f"🎵 Yuklab olish: {res['title'][:30]}", callback_data=f"dl_song_{song_id}")])
-            return InlineKeyboardMarkup(buttons)
+            song_id = str(uuid.uuid4())
+            context.bot_data[song_id] = {
+                'full_title': full_title,
+                'youtube_url': youtube_url
+            }
+            return InlineKeyboardMarkup([[ 
+                InlineKeyboardButton("🎵 Yuklab olish (Audio)", callback_data=f"dl_song_{song_id}")
+            ]])
         else:
             logger.warning(f"'{full_title}' uchun YouTube'dan havola topilmadi.")
             await status_message.reply_text(
