@@ -242,10 +242,10 @@ async def _transcribe_media(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         else:
             header = "✅ **Transkripsiya yakunlandi!**\n---\n"
             full_text = header + transcript
-            if len(full_text) > constants.MessageLimit.TEXT_LENGTH:
+            if len(full_text) > constants.MAX_MESSAGE_LENGTH:
                 await status_message.edit_text(header, parse_mode='Markdown')
-                for i in range(0, len(transcript), constants.MessageLimit.TEXT_LENGTH):
-                    await message.reply_text(transcript[i:i+constants.MessageLimit.TEXT_LENGTH])
+                for i in range(0, len(transcript), constants.MAX_MESSAGE_LENGTH):
+                    await message.reply_text(transcript[i:i+constants.MAX_MESSAGE_LENGTH])
             else:
                 await status_message.edit_text(full_text, parse_mode='Markdown')
 
