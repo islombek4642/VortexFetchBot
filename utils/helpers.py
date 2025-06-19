@@ -19,7 +19,7 @@ def find_first_file(directory: str, prefix: str) -> Optional[str]:
 
 
 async def _run_yt_dlp_with_progress(command: list, status_message: Message, progress_text_prefix: str):
-    """Runs a yt-dlp command, captures its output, and reports progress by editing a Telegram message."""
+    """Runs yt-dlp, captures output, and reports progress."""
     logger.debug(f"Running command: {' '.join(command)}")
     process = await asyncio.create_subprocess_exec(
         *command,
@@ -27,44 +27,29 @@ async def _run_yt_dlp_with_progress(command: list, status_message: Message, prog
         stderr=asyncio.subprocess.PIPE
     )
 
-    last_update_time = time.time()
-    last_percentage = -1
-
-    while process.returncode is None:
-        try:
-            line = await asyncio.wait_for(process.stdout.readline(), timeout=1.0)
+    async def stream_reader(stream, stream_name):
+        lines = []
+        while True:
+            line = await stream.readline()
             if not line:
-                await asyncio.sleep(0.1)
-                continue
-            
-            output = line.decode('utf-8', errors='ignore').strip()
-            logger.debug(f"yt-dlp stdout: {output}")
-            
-            match = re.search(r"\[download\]\\s+([0-9\\.]+)%", output)
-            if match:
-                try:
-                    percentage = int(float(match.group(1)))
-                    current_time = time.time()
-                    
-                    if percentage > last_percentage and (percentage % 5 == 0 or current_time - last_update_time > 2):
-                        new_text = f"{progress_text_prefix} {percentage}%"
-                        if new_text != status_message.text:
-                            await status_message.edit_text(new_text)
-                        last_percentage = percentage
-                        last_update_time = current_time
-                except (ValueError, IndexError):
-                    pass # Ignore parsing errors
-                except Exception as e:
-                    logger.warning(f"Could not edit progress message: {e}")
+                break
+            line_str = line.decode('utf-8', errors='ignore').strip()
+            lines.append(line_str)
+            logger.debug(f"yt-dlp {stream_name}: {line_str}")
+        return "\n".join(lines)
 
-        except asyncio.TimeoutError:
-            pass # No output, just check process status again
-        
-        if process.returncode is not None:
-            break
-    
-    stderr_bytes = await process.stderr.read()
-    return process.returncode, stderr_bytes.decode('utf-8', errors='ignore')
+    # Concurrently read stdout and stderr
+    stdout_task = asyncio.create_task(stream_reader(process.stdout, 'stdout'))
+    stderr_task = asyncio.create_task(stream_reader(process.stderr, 'stderr'))
+
+    # Wait for the process to complete
+    await process.wait()
+
+    # Get the results from the stream readers
+    stdout = await stdout_task
+    stderr = await stderr_task
+
+    return process.returncode, stdout, stderr
 
 
 async def _run_ffmpeg_async(func):

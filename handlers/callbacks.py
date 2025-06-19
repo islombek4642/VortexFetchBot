@@ -66,19 +66,45 @@ async def _handle_song_download(query: CallbackQuery, context: ContextTypes.DEFA
     try:
         output_template = os.path.join(settings.DOWNLOAD_PATH, f'{user_id}_{song_id}_%(title)s.%(ext)s')
         command = [
-            'yt-dlp', '-x', '--audio-format', 'mp3', '--audio-quality', '0',
-            '-o', output_template, '--max-filesize', '49m', youtube_url
+            'yt-dlp',
+            '-x',
+            '--audio-format', 'mp3',
+            '--audio-quality', '0',
+            '-o', output_template,
+            '--max-filesize', '49m',
+            '--cookies', settings.YOUTUBE_COOKIE_FILE if settings.YOUTUBE_COOKIE_FILE else 'youtube_cookies.txt',
+            '--no-check-certificates',
+            '--geo-bypass',
+            '--no-playlist',
+            '--ignore-errors',
+            '--extract-audio',
+            '--format', 'bestaudio',
+            youtube_url
         ]
-        return_code, stderr = await _run_yt_dlp_with_progress(command, status_message, f"🎵 <b>{html.escape(full_title)}</b> yuklanmoqda...")
+        return_code, stdout, stderr = await _run_yt_dlp_with_progress(command, status_message, f"🎵 <b>{html.escape(full_title)}</b> yuklanmoqda...")
+
+        # Improved error handling for YouTube anti-bot/login issues
+        if ("Sign in to confirm" in stderr or "Signature extraction failed" in stderr):
+            await query.edit_message_caption(
+                caption=f"❌ <b>{html.escape(full_title)}</b> qo'shig'ini yuklab bo'lmadi. YouTube bu faylni faqat ro'yxatdan o'tgan foydalanuvchilarga ko'rsatmoqda yoki himoya o'rnatilgan.",
+                parse_mode='HTML'
+            )
+            return
 
         if return_code != 0:
             logger.error(f"Error downloading song {full_title}: {stderr}")
-            await status_message.edit_message_text("❌ Qo'shiqni yuklashda xatolik.")
+            await query.edit_message_caption(
+                caption="❌ Qo'shiqni yuklashda xatolik.",
+                parse_mode='HTML'
+            )
             return
 
         audio_path = find_first_file(settings.DOWNLOAD_PATH, f'{user_id}_{song_id}_')
         if not audio_path:
-            await status_message.edit_message_text("❌ Yuklangan qo'shiq fayli topilmadi.")
+            await query.edit_message_caption(
+                caption="❌ Yuklangan qo'shiq fayli topilmadi.",
+                parse_mode='HTML'
+            )
             return
 
         with open(audio_path, 'rb') as audio_file:
@@ -91,21 +117,12 @@ async def _handle_song_download(query: CallbackQuery, context: ContextTypes.DEFA
         await status_message.delete()
     except Exception as e:
         logger.error(f"Error processing song download: {e}", exc_info=True)
-        await status_message.edit_message_text("Kutilmagan xatolik.")
+        await query.edit_message_caption(
+            caption="Kutilmagan xatolik.",
+            parse_mode='HTML'
+        )
     finally:
         if audio_path and os.path.exists(audio_path):
             os.remove(audio_path)
         if song_id in context.bot_data:
             del context.bot_data[song_id]
-
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Parses the CallbackQuery and routes to the appropriate handler."""
-    query = update.callback_query
-    await query.answer()
-
-    if query.data.startswith('stats_page_'):
-        await _handle_stats_pagination(query)
-    elif query.data.startswith('dl_song_'):
-        await _handle_song_download(query, context)
-    else:
-        logger.warning(f"Unhandled callback query data: {query.data}")

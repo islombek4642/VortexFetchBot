@@ -6,17 +6,16 @@ import asyncio
 import functools
 import math
 import tempfile
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants, Message
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants, Message, error as telegram_error
 from telegram.ext import ContextTypes
 from shazamio import Shazam
+from urllib.parse import urlparse, parse_qs
 
 from config import settings, logger
 from utils.decorators import register_user
 from utils.helpers import find_first_file, _run_yt_dlp_with_progress, _run_ffmpeg_async
-from transcriber import transcribe_audio_from_file
+from transcriber_whisper import transcribe_whisper_sync
 from database import db
-
-from youtubesearchpython import VideosSearch
 
 
 # --- Command Handlers ---
@@ -100,24 +99,34 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 # --- Helper Functions (Business Logic) ---
 
-async def search_youtube_link(query: str) -> str | None:
-    """YouTube'dan qo‘shiq nomi bo‘yicha birinchi videoni qidiradi."""
-    try:
-        videos_search = VideosSearch(query, limit=1)
-        result = await videos_search.next()
-        if result['result']:
-            return result['result'][0]['link']
-    except Exception as e:
-        logger.error(f"YouTube qidiruvda xatolik: {e}", exc_info=True)
+from pytube import Search
+
+async def search_youtube_link(query: str):
+    """YouTube'dan qo'shiq nomi bo'yicha birinchi videoni qidiradi."""
+    max_retries = 3
+    retry_delay = 2  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            search = Search(query)
+            if search.results:
+                return search.results[0].watch_url
+            break  # Success, break out of retry loop
+        except Exception as e:
+            if attempt == max_retries - 1:
+                logger.error(f"YouTube search failed after {max_retries} attempts: {e}")
+                return None
+            await asyncio.sleep(retry_delay)
+            retry_delay *= 1.5  # Exponential backoff
+            logger.warning(f"YouTube search attempt {attempt + 1} failed, retrying...")
     return None
 
 
 async def _download_video_from_url(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Core logic to download a video from a given URL."""
     user_id = update.message.from_user.id
-    status_message = await update.message.reply_text("Yuklanmoqda...", reply_to_message_id=update.message.message_id)
+    status_message = await update.message.reply_text("Yuklanmoqda...")
     video_path = None
-    instagram_cookies_path = None  # To be accessible in finally block
     try:
         output_template = os.path.join(settings.DOWNLOAD_PATH, f'{user_id}_{update.message.message_id}_%(title)s.%(ext)s')
         command = [
@@ -129,48 +138,103 @@ async def _download_video_from_url(url: str, update: Update, context: ContextTyp
         ]
 
         # Instagram cookies
-        if 'instagram.com' in url and settings.INSTAGRAM_COOKIES_TXT:
-            try:
-                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8') as tmp_cookie_file:
-                    tmp_cookie_file.write(settings.INSTAGRAM_COOKIES_TXT)
-                    instagram_cookies_path = tmp_cookie_file.name
-                command.extend(['--cookies', instagram_cookies_path])
-                logger.info("Using Instagram cookies for download.")
-            except Exception as e:
-                logger.error(f"Failed to create Instagram cookie file: {e}")
+        if 'instagram.com' in url and settings.INSTAGRAM_COOKIE_FILE and os.path.exists(settings.INSTAGRAM_COOKIE_FILE):
+            command.extend(['--cookies', settings.INSTAGRAM_COOKIE_FILE])
+            logger.info(f"Using Instagram cookie file: {settings.INSTAGRAM_COOKIE_FILE}")
 
         # YouTube cookies
-        if ('youtube.com' in url or 'youtu.be' in url) and settings.YOUTUBE_COOKIES:
-            # We use the path to the cookie file, not the content
-            command.extend(['--cookies', settings.COOKIE_FILE_PATH])
+        elif ('youtube.com' in url or 'youtu.be' in url) and settings.YOUTUBE_COOKIE_FILE and os.path.exists(settings.YOUTUBE_COOKIE_FILE):
+            command.extend(['--cookies', settings.YOUTUBE_COOKIE_FILE])
+            logger.info(f"Using YouTube cookie file: {settings.YOUTUBE_COOKIE_FILE}")
 
-        return_code, stderr = await _run_yt_dlp_with_progress(command, status_message, "Yuklanmoqda...")
+        return_code, stdout, stderr = await _run_yt_dlp_with_progress(command, status_message, "Yuklanmoqda...")
 
+        # First, check if yt-dlp reported an error
         if return_code != 0:
-            logger.error(f"yt-dlp error for {url}: {stderr}")
-            error_map = {
-                "Unsupported URL": "❌ Noto'g'ri yoki qo'llab-quvvatlanmaydigan havola.",
-                "Video unavailable": "❌ Video mavjud emas.",
-                "File is larger than the maximum": "❌ Video hajmi 50MB dan katta."
-            }
-            error_message = next((msg for key, msg in error_map.items() if key in stderr), "❌ Videoni yuklashda xatolik.")
-            await status_message.edit_text(error_message)
+            error_message = stderr or stdout or "Noma'lum xato"
+            # Try to extract a title from the URL if clean_caption is not available
+            try:
+                # Try to extract from the URL (for YouTube links)
+                parsed_url = urlparse(url)
+                if 'youtube.com' in url or 'youtu.be' in url:
+                    qs = parse_qs(parsed_url.query)
+                    video_title = qs.get('v', [os.path.basename(parsed_url.path)])[0]
+                else:
+                    video_title = os.path.basename(parsed_url.path)
+            except Exception:
+                video_title = url
+
+            if "Sign in to confirm" in error_message or "Signature extraction failed" in error_message:
+                error_text = (
+                    f"❌ <b>{html.escape(video_title)}</b> videoni yuklab bo'lmadi. "
+                    "YouTube bu faylni faqat ro'yxatdan o'tgan foydalanuvchilarga ko'rsatmoqda yoki himoya o'rnatilgan."
+                )
+            else:
+                error_text = (
+                    f"❌ <b>{html.escape(video_title)}</b> videoni yuklab bo'lmadi.\n"
+                    f"Sabab: {html.escape(error_message[:1000])}"
+                )
+            await status_message.edit_text(error_text, parse_mode='HTML')
             return
 
-        video_path = find_first_file(settings.DOWNLOAD_PATH, f'{user_id}_{update.update_id}_')
+        # After download, find the file using the correct prefix
+        file_prefix = f"{user_id}_{update.message.message_id}"
+        video_path = find_first_file(settings.DOWNLOAD_PATH, file_prefix)
+
+        # Check if a file was actually downloaded
         if not video_path:
-            logger.error(f"File not found after download for {url}")
-            await status_message.edit_text("❌ Yuklangan video fayli topilmadi.")
+            logger.error(f"File not found after download for {url}, despite yt-dlp exiting with code 0.")
+            logger.error(f"yt-dlp stdout: {stdout}")
+            logger.error(f"yt-dlp stderr: {stderr}")
+            await status_message.edit_text(
+                "❌ Xatolik: Video fayl topilmadi. Bu shaxsiy (private) video bo'lishi, "
+                "havola noto'g'ri bo'lishi yoki cookie faylingiz eskirgan bo'lishi mumkin."
+            )
             return
 
         logger.info(f"Downloaded to: {video_path}")
-        await status_message.edit_text("Musiqa aniqlanmoqda...")
 
+        await status_message.edit_text("✅ Video muvaffaqiyatli yuklandi!")
+
+        # --- Recognize Song ---
         inline_markup = await _recognize_and_offer_song_download(context, status_message, video_path, user_id, update.update_id)
 
+        # --- Send Video to User ---
+        await status_message.edit_text("Video yuborilmoqda...")
         clean_caption = ' '.join(os.path.basename(video_path).split('_')[2:])
-        with open(video_path, 'rb') as video_file:
-            await update.message.reply_video(video=video_file, caption=clean_caption, reply_markup=inline_markup)
+        
+        # Retry logic for Telegram API timeout
+        max_retries = 3
+        retry_delay = 2  # seconds
+        last_exception = None
+        
+        for attempt in range(max_retries):
+            try:
+                with open(video_path, 'rb') as video_file:
+                    # Use read() to get file object instead of passing path directly
+                    await update.message.reply_video(
+                        video=video_file,
+                        caption=clean_caption,
+                        reply_markup=inline_markup,
+                        read_timeout=300,  # 5 minutes timeout for large files
+                        write_timeout=300,
+                        connect_timeout=60,
+                        pool_timeout=60
+                    )
+                break  # Success, break out of retry loop
+            except telegram_error.TimedOut as e:
+                last_exception = e
+                if attempt == max_retries - 1:
+                    logger.error(f"Failed to upload video after {max_retries} attempts")
+                    await status_message.edit_text("❌ Xatolik: Video hajmi juda katta yoki internet tezligi sekin.")
+                    return
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+                logger.warning(f"Upload attempt {attempt + 1} failed, retrying...")
+            except Exception as e:
+                logger.error(f"Unexpected error during video upload: {e}", exc_info=True)
+                await status_message.edit_text("❌ Xatolik: Videoni yuklashda kutilmagan xato yuz berdi.")
+                return
 
         if not inline_markup:
             await status_message.edit_text("✅ Video yuborildi. Unda musiqa topilmadi.")
@@ -183,12 +247,6 @@ async def _download_video_from_url(url: str, update: Update, context: ContextTyp
     finally:
         if video_path and os.path.exists(video_path):
             os.remove(video_path)
-        if instagram_cookies_path and os.path.exists(instagram_cookies_path):
-            try:
-                os.remove(instagram_cookies_path)
-                logger.info(f"Removed temporary Instagram cookie file: {instagram_cookies_path}")
-            except Exception as e:
-                logger.error(f"Failed to remove temporary Instagram cookie file: {e}")
 
 async def _recognize_and_offer_song_download(
     context: ContextTypes.DEFAULT_TYPE,
@@ -279,7 +337,7 @@ async def _recognize_and_offer_song_download(
 
 
 async def _transcribe_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Core logic to transcribe a media file."""
+    """Core logic to transcribe a media file using Whisper only."""
     message = update.message
     user_id = message.from_user.id
     file_to_download = message.audio or message.video or message.voice
@@ -288,7 +346,7 @@ async def _transcribe_media(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await message.reply_text("Transkripsiya uchun media fayl topilmadi.")
         return
 
-    status_message = await message.reply_text("Fayl qabul qilindi. Tayyorlanmoqda...")
+    status_message = await message.reply_text("Fayl qabul qilindi. Whisper modelida tahlil qilinmoqda...")
     downloaded_file_path, output_audio_path = None, None
     try:
         file_id = file_to_download.file_id
@@ -308,21 +366,13 @@ async def _transcribe_media(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             ))
             audio_path_to_transcribe = output_audio_path
 
-        await status_message.edit_text("Audio tahlil qilinmoqda...")
-        transcript = await transcribe_audio_from_file(audio_path_to_transcribe)
-
-        if any(keyword in transcript for keyword in ["Xatolik:", "Transkripsiya vaqtida", "Matn aniqlanmadi"]):
-            await status_message.edit_text(transcript)
+        await status_message.edit_text("Audio tahlil qilinmoqda (Whisper)...")
+        loop = asyncio.get_event_loop()
+        transcript = await loop.run_in_executor(None, transcribe_whisper_sync, audio_path_to_transcribe)
+        if transcript and transcript.strip():
+            await status_message.edit_text("✅ **Transkripsiya yakunlandi!**\n---\n" + transcript, parse_mode='Markdown')
         else:
-            header = "✅ **Transkripsiya yakunlandi!**\n---\n"
-            full_text = header + transcript
-            if len(full_text) > 4096:
-                await status_message.edit_text(header, parse_mode='Markdown')
-                for i in range(0, len(transcript), 4096):
-                    await message.reply_text(transcript[i:i+4096])
-            else:
-                await status_message.edit_text(full_text, parse_mode='Markdown')
-
+            await status_message.edit_text("❌ Transkripsiya natijasi topilmadi.")
     except ffmpeg.Error as e:
         error_details = e.stderr.decode() if e.stderr else "Noma'lum xato"
         logger.error(f"ffmpeg error during audio extraction: {error_details}")

@@ -1,4 +1,4 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -10,15 +10,39 @@ ENV/
 env/
 ENV/
 
-# Environment variables
+# Environment variables and secrets
 .env
+.env.*
 cookies.txt
+youtube_cookies.txt
+instagram_cookies.txt
 
 # Project specific
+# Downloaded/transcribed files
 downloads/
 extracted_audio.m4a
+*.mp3
+*.wav
+*.m4a
 
-# IDE / Editor specific
+# Database
+*.db
+*.sqlite3
+bot_users.db
+
+# Editor/IDE
 .vscode/
 .idea/
 *.DS_Store
+*.swp
+*.swo
+
+# Railway/Deployment
+nixpacks.toml
+Procfile
+
+# Logs
+*.log
+
+# Misc
+*.bak

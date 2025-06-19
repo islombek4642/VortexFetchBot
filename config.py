@@ -23,15 +23,14 @@ class Config:
         self.TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
         self.ADMIN_ID_STR = os.getenv('ADMIN_ID')
         self.WIT_AI_TOKEN = os.getenv('WIT_AI_TOKEN')
-        # --- Optional --- #
-        self.YOUTUBE_COOKIES = os.getenv('YOUTUBE_COOKIES')
-        self.INSTAGRAM_COOKIES_TXT = os.getenv('INSTAGRAM_COOKIES_TXT')
         self.ADMIN_ID = None
 
         # --- File Paths ---
         self.DOWNLOAD_PATH = 'downloads'
-        self.COOKIE_FILE_PATH = "cookies.txt"
         self.DB_FILE = "bot_users.db"
+        # --- Optional Cookie File Paths ---
+        self.YOUTUBE_COOKIE_FILE = os.getenv('YOUTUBE_COOKIE_FILE')
+        self.INSTAGRAM_COOKIE_FILE = os.getenv('INSTAGRAM_COOKIE_FILE')
 
         # --- Timezone ---
         self.TASHKENT_TZ = pytz.timezone('Asia/Tashkent')
@@ -52,21 +51,35 @@ class Config:
                 raise ConfigError("FATAL: ADMIN_ID is not a valid integer. Please check your .env file.")
 
     def setup_environment(self):
-        """Creates necessary directories and files. Should be called once at startup."""
+        """Creates necessary directories and validates file paths. Should be called once at startup."""
         # Create download directory
         os.makedirs(self.DOWNLOAD_PATH, exist_ok=True)
         logger.info(f"Download directory ensured to exist: '{self.DOWNLOAD_PATH}'")
 
-        # Create YouTube cookie file from environment variable
-        if self.YOUTUBE_COOKIES:
-            try:
-                with open(self.COOKIE_FILE_PATH, 'w', encoding='utf-8') as f:
-                    f.write(self.YOUTUBE_COOKIES)
-                logger.info(f"YouTube cookie file '{self.COOKIE_FILE_PATH}' successfully created.")
-            except IOError as e:
-                logger.error(f"Error writing cookie file: {e}")
+        # Check if cookie files exist and log warnings if not
+        if self.YOUTUBE_COOKIE_FILE and not os.path.exists(self.YOUTUBE_COOKIE_FILE):
+            logger.warning(
+                f"YouTube cookie file specified but not found at '{self.YOUTUBE_COOKIE_FILE}'. "
+                "Age-restricted downloads may fail."
+            )
+        elif self.YOUTUBE_COOKIE_FILE:
+            logger.info(f"YouTube cookie file found: '{self.YOUTUBE_COOKIE_FILE}'")
         else:
-            logger.warning("YOUTUBE_COOKIES env var not set. Age-restricted downloads may fail.")
+            logger.warning(
+                "YOUTUBE_COOKIE_FILE not set in .env. Age-restricted downloads may fail."
+            )
+
+        if self.INSTAGRAM_COOKIE_FILE and not os.path.exists(self.INSTAGRAM_COOKIE_FILE):
+            logger.warning(
+                f"Instagram cookie file specified but not found at '{self.INSTAGRAM_COOKIE_FILE}'. "
+                "Instagram downloads may fail."
+            )
+        elif self.INSTAGRAM_COOKIE_FILE:
+            logger.info(f"Instagram cookie file found: '{self.INSTAGRAM_COOKIE_FILE}'")
+        else:
+            logger.warning(
+                "INSTAGRAM_COOKIE_FILE not set in .env. Instagram downloads may fail."
+            )
 
 # --- Global Singleton Instance ---
 # This creates a single, globally accessible instance of the configuration.
