@@ -23,7 +23,9 @@ class Config:
         self.TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
         self.ADMIN_ID_STR = os.getenv('ADMIN_ID')
         self.WIT_AI_TOKEN = os.getenv('WIT_AI_TOKEN')
+        # --- Optional --- #
         self.YOUTUBE_COOKIES = os.getenv('YOUTUBE_COOKIES')
+        self.INSTAGRAM_COOKIES_TXT = os.getenv('INSTAGRAM_COOKIES_TXT')
         self.ADMIN_ID = None
 
         # --- File Paths ---

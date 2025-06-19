@@ -114,24 +114,31 @@ async def search_youtube_link(query: str) -> str | None:
 async def _download_video_from_url(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Core logic to download a video from a given URL."""
     user_id = update.message.from_user.id
+    status_message = await update.message.reply_text("Yuklanmoqda...", reply_to_message_id=update.message.message_id)
     video_path = None
-    status_message = await update.message.reply_text("So'rovingiz qayta ishlanmoqda...")
-
-    output_template = os.path.join(settings.DOWNLOAD_PATH, f'{user_id}_{update.update_id}_%(title)s.%(ext)s')
-    command = [
-        'yt-dlp',
-        '-f', 'bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]/best',
-        '--merge-output-format', 'mp4',
-        '-o', output_template,
-        '--max-filesize', '49m',
-    ]
-    if settings.YOUTUBE_COOKIES:
-        command.extend(['--cookies', settings.COOKIE_FILE_PATH])
-    command.append(url)
-
+    instagram_cookies_path = None  # To be accessible in finally block
     try:
-        logger.info(f"Downloading: {url}")
-        await status_message.edit_text("Yuklanmoqda... 0%")
+        output_template = os.path.join(settings.DOWNLOAD_PATH, f'{user_id}_{update.message.message_id}_%(title)s.%(ext)s')
+        command = [
+            'yt-dlp', '-f', 'best', '--max-filesize', '1.8G',
+            '-o', output_template, url
+        ]
+
+        # Instagram cookies
+        if 'instagram.com' in url and settings.INSTAGRAM_COOKIES_TXT:
+            try:
+                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8') as tmp_cookie_file:
+                    tmp_cookie_file.write(settings.INSTAGRAM_COOKIES_TXT)
+                    instagram_cookies_path = tmp_cookie_file.name
+                command.extend(['--cookies', instagram_cookies_path])
+                logger.info("Using Instagram cookies for download.")
+            except Exception as e:
+                logger.error(f"Failed to create Instagram cookie file: {e}")
+
+        # YouTube cookies
+        if ('youtube.com' in url or 'youtu.be' in url) and settings.YOUTUBE_COOKIES:
+            command.extend(['--cookies', settings.YOUTUBE_COOKIES])
+
         return_code, stderr = await _run_yt_dlp_with_progress(command, status_message, "Yuklanmoqda...")
 
         if return_code != 0:
@@ -171,6 +178,12 @@ async def _download_video_from_url(url: str, update: Update, context: ContextTyp
     finally:
         if video_path and os.path.exists(video_path):
             os.remove(video_path)
+        if instagram_cookies_path and os.path.exists(instagram_cookies_path):
+            try:
+                os.remove(instagram_cookies_path)
+                logger.info(f"Removed temporary Instagram cookie file: {instagram_cookies_path}")
+            except Exception as e:
+                logger.error(f"Failed to remove temporary Instagram cookie file: {e}")
 
 async def _recognize_and_offer_song_download(
     context: ContextTypes.DEFAULT_TYPE,
