@@ -261,24 +261,40 @@ async def _recognize_and_offer_song_download(
     try:
         # Audio ajratiladi
         audio_path = os.path.join(settings.DOWNLOAD_PATH, f"{user_id}_{update_id}_shazam.wav")
+        # Try stereo and higher bitrate for better Shazam results
         await _run_ffmpeg_async(functools.partial(
             ffmpeg.input(video_filepath).output(
                 audio_path,
                 format='wav',
                 acodec='pcm_s16le',
-                ac=1,
-                ar='44100'
+                ac=2,  # stereo
+                ar='44100',
+                audio_bitrate='192k'
             ).run,
             overwrite_output=True, quiet=True
         ))
+        logger.info(f"Audio extracted for Shazam: {audio_path}")
+        # Send the extracted audio to the user for debugging
+        try:
+            with open(audio_path, 'rb') as audio_file:
+                await status_message.reply_audio(audio=audio_file, caption="Ajratilgan audio (Shazam uchun)")
+        except Exception as e:
+            logger.warning(f"Could not send extracted audio: {e}")
 
         # Shazam yordamida aniqlash
         shazam = Shazam()
-        recognition_result = await asyncio.wait_for(shazam.recognize(audio_path), timeout=30.0)
+        try:
+            recognition_result = await asyncio.wait_for(shazam.recognize(audio_path), timeout=45.0)
+        except Exception as e:
+            logger.error(f"Shazam recognize error: {e}")
+            await status_message.edit_text("Shazam aniqlashda xatolik yoki timeout. Ajratilgan audio fayl downloads/ papkasida saqlanadi.")
+            return None
 
         track_info = recognition_result.get('track')
         if not track_info:
-            await status_message.edit_text("Qo'shiq topilmadi.")
+            await status_message.edit_text("Qo'shiq topilmadi. Ajratilgan audio fayl downloads/ papkasida saqlanadi.")
+            logger.warning(f"No track found by Shazam for {audio_path}")
+            # Do not delete the audio file for debugging
             return None
 
         subtitle = track_info.get('subtitle', "Noma'lum")
