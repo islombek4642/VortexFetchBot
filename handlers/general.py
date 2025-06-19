@@ -5,6 +5,7 @@ import ffmpeg
 import asyncio
 import functools
 import math
+import tempfile
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants, Message
 from telegram.ext import ContextTypes
 from shazamio import Shazam

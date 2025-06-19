@@ -32,11 +32,12 @@ async def _transcribe_chunk(chunk_path: str) -> str | None:
     def sync_transcribe():
         try:
             with open(chunk_path, 'rb') as audio_file:
-                # Matnni aniqlash sifatini oshirish uchun WAV formatidan foydalanamiz
                 resp = client.speech(audio_file, {'Content-Type': 'audio/wav'})
-                transcript = resp.get('text')
-                if not transcript and isinstance(resp, list) and resp:
+                # Wit.ai ba'zan ro'yxat qaytaradi, eng oxirgi element eng to'liq bo'ladi
+                if isinstance(resp, list) and resp:
                     transcript = resp[-1].get('text')
+                else:
+                    transcript = resp.get('text')
                 return transcript
         except Exception as e:
             logger.error(f"Wit.ai API so'rovida xatolik ({os.path.basename(chunk_path)}): {e}", exc_info=False)
@@ -78,16 +79,11 @@ async def transcribe_audio_from_file(audio_path: str) -> str:
         start_ms = i * chunk_length_ms
         end_ms = start_ms + chunk_length_ms
         audio_chunk = audio[start_ms:end_ms]
-        # Vaqtinchalik fayl uchun .wav kengaytmasidan foydalanamiz
         chunk_path = os.path.join(temp_dir, f"temp_chunk_{i}_{os.path.basename(audio_path)}.wav")
 
         try:
-            # Matnni aniqlash sifatini oshirish uchun audioni maxsus formatlangan WAV ga o'tkazamiz
-            audio_chunk.export(
-                chunk_path, 
-                format="wav", 
-                parameters=["-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le"]
-            )
+            # Export chunk to WAV with parameters for better recognition
+            audio_chunk.export(chunk_path, format="wav")
             transcript_part = await _transcribe_chunk(chunk_path)
             if transcript_part:
                 full_transcript.append(transcript_part)
