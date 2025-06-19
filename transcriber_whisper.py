@@ -27,5 +27,5 @@ def transcribe_whisper_full(audio_path):
     model = get_model()
     segments, info = model.transcribe(audio_path, beam_size=1)
     text = " ".join([segment.text.strip() for segment in segments])
-    detected_lang = info.get("language", "unknown")
+    detected_lang = getattr(info, "language", "unknown")
     return text, detected_lang 
