@@ -30,6 +30,19 @@ async def _handle_stats_pagination(query: CallbackQuery) -> None:
         logger.error(f"Error handling stats pagination: {e}", exc_info=True)
         await query.answer("Statistikani ko'rsatishda xatolik.", show_alert=True)
 
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Parses the CallbackQuery and routes to the appropriate handler."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data.startswith('dl_song_'):
+        await _handle_song_download(query, context)
+    elif query.data.startswith('stats_page_'):
+        await _handle_stats_pagination(query)
+    else:
+        logger.warning(f"Unhandled callback query with data: {query.data}")
+
+
 async def _handle_song_download(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles the logic for downloading a song."""
     user_id = query.from_user.id
