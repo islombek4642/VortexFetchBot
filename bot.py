@@ -1,5 +1,5 @@
 
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler
+from telegram.ext import Application, ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 
 # --- Local Imports ---
 from config import settings, logger
