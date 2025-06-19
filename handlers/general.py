@@ -169,7 +169,7 @@ async def _recognize_and_offer_song_download(context: ContextTypes.DEFAULT_TYPE,
         recognition_result = await asyncio.wait_for(shazam.recognize(audio_path), timeout=30.0)
 
         if track_info := recognition_result.get('track'):
-            full_title = f"{track_info.get('subtitle', 'Noma\'lum')} - {track_info.get('title', 'Noma\'lum')}"
+            full_title = f"{track_info.get('subtitle', "Noma'lum")} - {track_info.get('title', "Noma'lum")}"
             youtube_url = next((section.get('youtubeurl') for section in track_info.get('sections', []) if section.get('youtubeurl')), None)
 
             logger.info(f"Song recognized: {full_title}")

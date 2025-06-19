@@ -1,55 +1,93 @@
-# Universal Video Yuklovchi Telegram Bot
+# VortexFetchBot 🌪️
 
-`yt-dlp` yordamida turli platformalardan videolarni yuklab beruvchi Telegram boti.
+[![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python)](https://www.python.org/)
+[![Telegram Bot API](https://img.shields.io/badge/Telegram%20Bot%20API-gray?style=for-the-badge&logo=telegram)](https://core.telegram.org/bots/api)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-## Imkoniyatlar
+**VortexFetchBot** — bu Telegram uchun yaratilgan ko'p funksiyali media-assistent. U YouTube, Instagram, TikTok kabi mashhur platformalardan videolarni osonlikcha yuklab olish, videodagi musiqani aniqlash va audio/video xabarlarni matnga o'girish imkoniyatini beradi.
 
--   Botga URL yuborish orqali videolarni yuklab olish.
--   Keng ko'lamli veb-saytlarni qo'llab-quvvatlaydi (`yt-dlp` tufayli).
--   Videolarni MP4 formatida, maksimal 720p sifatida va 50MB dan oshmasligiga harakat qiladi (Telegram bot API chegarasi).
+---
 
-## Talablar
+## 🚀 Asosiy Imkoniyatlar
 
--   Python 3.8+ kerak bo'ladi
--   Tizimingizda `yt-dlp` o'rnatilgan va PATH'da mavjud bo'lishi kerak:
-    -   `yt-dlp` ni pip orqali o'rnatish: `pip install yt-dlp`
-    -   Yoki [yt-dlp GitHub releases](https://github.com/yt-dlp/yt-dlp/releases) dan yuklab oling va PATH'ga qo'shing.
--   Telegram Bot Tokeni kerak bo'ladi.
+-   **Video Yuklash:** Har qanday qo'llab-quvvatlanadigan platformadan havolani yuboring va videoni oling.
+-   **Musiqa Aniqlash:** Videodagi qo'shiqni bir zumda toping (`Shazam` integratsiyasi).
+-   **Transkripsiya:** Audio, video yoki ovozli xabarlarni matnga o'giring (`Wit.ai` yordamida).
+-   **Admin Paneli:** Bot foydalanuvchilari statistikasini kuzatib boring.
+-   **Keng Platforma Dastagi:** `yt-dlp` tufayli yuzlab veb-saytlarni qo'llab-quvvatlaydi.
 
-## O'rnatish
+## 🛠️ Texnologiyalar Stеki
 
-1.  **Repozitoriyani klonlang yoki fayllarni yarating:**
-    ```bash
-    # Git repozitoriyangiz bo'lsa, shu yerda klon qilishingiz mumkin.
-    # Hozircha bot.py, requirements.txt fayllari papkada ekanligiga ishonch hosil qiling.
-    ```
+-   **Til:** Python 3.8+
+-   **Asosiy Freymvork:** `python-telegram-bot`
+-   **Video Yuklash:** `yt-dlp`
+-   **Musiqa Aniqlash:** `shazamio`
+-   **Transkripsiya:** `wit.ai`
+-   **Audio Ishlov:** `ffmpeg-python`
+-   **Ma'lumotlar Bazasi:** `SQLite`
 
-2.  **Virtual muhit yarating (tavsiya etiladi):**
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # Windowsda: venv\Scripts\activate
-    ```
+## ⚙️ O'rnatish va Ishga Tushirish
 
-3.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+Loyihani o'z kompyuteringizda ishga tushirish uchun quyidagi amallarni bajaring:
 
-    This will install `python-telegram-bot`, `yt-dlp`, and `python-dotenv`.
-    ```
+### 1. Talablar
 
-4.  **Set the Telegram Bot Token:**
-    Create a file named `.env` in the project's root directory (`d:\VIDEO_DOWNLOADER`).
-    Add the following line to the `.env` file, replacing `YOUR_TELEGRAM_BOT_TOKEN` with your actual token:
-    ```
-    TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN"
-    ```
-    The bot will load this token automatically.
+-   **Python 3.8** yoki undan yuqori versiya.
+-   **FFmpeg:** Tizimingizda o'rnatilgan va `PATH`ga qo'shilgan bo'lishi kerak. Bu audio va video fayllarni qayta ishlash uchun zarur.
 
-5.  **Ensure `yt-dlp` is installed and in PATH:**
-    The bot calls `yt-dlp` as a command-line tool. If it's not in your PATH, the video download will fail. You can test by typing `yt-dlp --version` in your terminal.
+### 2. Loyihani Klonlash
 
-## Running the Bot
+```bash
+git clone https://github.com/islombek4642/VortexFetchBot.git
+cd VortexFetchBot
+```
+
+### 3. Virtual Muhit Yaratish
+
+Virtual muhit yaratish va faollashtirish har doim tavsiya etiladi:
+
+```bash
+# Windows uchun
+python -m venv venv
+venv\Scripts\activate
+
+# macOS / Linux uchun
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 4. Bog'liqliklarni O'rnatish
+
+Kerakli barcha kutubxonalarni `requirements.txt` fayli orqali o'rnating:
+
+```bash
+pip install -r requirements.txt
+```
+
+### 5. Konfiguratsiya (.env fayli)
+
+Loyiha papkasida `.env` nomli fayl yarating va unga quyidagi o'zgaruvchilarni kiriting.
+
+```env
+# @BotFather orqali olingan Telegram bot tokeni
+TELEGRAM_BOT_TOKEN="SIZNING_TELEGRAM_BOT_TOKENINGIZ"
+
+# Sizning shaxsiy Telegram ID raqamingiz (admin buyruqlari uchun)
+ADMIN_ID="SIZNING_TELEGRAM_ID"
+
+# Wit.ai platformasidan olingan Server Access Token (transkripsiya uchun)
+WIT_AI_TOKEN="SIZNING_WIT_AI_TOKENINGIZ"
+
+# (Ixtiyoriy) YouTube cheklovlarini chetlab o'tish uchun cookie fayli
+# Brauzeringizdan cookies.txt fayli tarkibini to'liq nusxalab joylashtiring
+YOUTUBE_COOKIES='''
+...bu yerga cookie ma'lumotlari joylanadi...
+'''
+```
+
+### 6. Botni Ishga Tushirish
+
+Barcha sozlamalar tayyor bo'lgach, botni ishga tushiring:
 
 ```bash
 python bot.py
