@@ -169,14 +169,23 @@ async def _recognize_and_offer_song_download(context: ContextTypes.DEFAULT_TYPE,
         recognition_result = await asyncio.wait_for(shazam.recognize(audio_path), timeout=30.0)
 
         if track_info := recognition_result.get('track'):
-            full_title = f"{track_info.get('subtitle', "Noma'lum")} - {track_info.get('title', "Noma'lum")}"
-            youtube_url = next((section.get('youtubeurl') for section in track_info.get('sections', []) if section.get('youtubeurl')), None)
+            subtitle = track_info.get('subtitle', "Noma'lum")
+            title = track_info.get('title', "Noma'lum")
+            full_title = f"{subtitle} - {title}"
+            
+            youtube_url = next(
+                (section.get('youtubeurl') for section in track_info.get('sections', []) if section.get('youtubeurl')),
+                None
+            )
 
             logger.info(f"Song recognized: {full_title}")
-            await status_message.edit_text(f"🎶 Qo'shiq topildi: <b>{html.escape(full_title)}</b>", parse_mode='HTML')
+            await status_message.edit_text(
+                f"🎶 Qo'shiq topildi: <b>{html.escape(full_title)}</b>", parse_mode='HTML'
+            )
 
             song_id = str(uuid.uuid4())
             context.bot_data[song_id] = {'full_title': full_title, 'youtube_url': youtube_url}
+            
             return InlineKeyboardMarkup([[
                 InlineKeyboardButton("🎵 Yuklab olish (Audio)", callback_data=f"dl_song_{song_id}")
             ]])
