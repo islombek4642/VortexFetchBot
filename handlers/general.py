@@ -102,20 +102,24 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def search_youtube_link(query: str):
     try:
-        videos_search = VideosSearch(query, limit=3)
+        videos_search = VideosSearch(query, limit=5)
         result = await asyncio.to_thread(videos_search.next)
+        found = []
         if result and result.get('result'):
-            # Try to find the most relevant result
+            logger.info(f"YouTube qidiruv natijalari: {[v['title'] for v in result['result']]}")
             for video in result['result']:
                 title = video.get('title', '').lower()
                 channel = video.get('channel', {}).get('name', '').lower()
                 if any(word in title for word in ['official', 'audio', 'topic']) or any(word in channel for word in ['official', 'audio', 'topic']):
-                    return video['link']
-            # If no good match, return the first result
-            return result['result'][0]['link']
+                    found.append({'title': video['title'], 'link': video['link']})
+            # Agar mos natijalar topilmasa, birinchi 3 natijani qaytaramiz
+            if not found:
+                for video in result['result'][:3]:
+                    found.append({'title': video['title'], 'link': video['link']})
+        return found
     except Exception as e:
         logger.error(f"YouTube search failed: {e}")
-    return None
+    return []
 
 
 async def _download_video_from_url(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -300,33 +304,36 @@ async def _recognize_and_offer_song_download(
             if section.get('youtubeurl')
         ), None)
 
-        # Professional message logic
         subtitle = track_info.get('subtitle', "Noma'lum")
         title = track_info.get('title', "Noma'lum")
         full_title = f"{subtitle} - {title}"
         youtube_source = None
+        youtube_results = []
 
         if youtube_url:
             youtube_source = "Shazam orqali topildi"
+            youtube_results = [{'title': full_title, 'link': youtube_url}]
         else:
             logger.info(f"Shazam'dan YouTube havolasi topilmadi. '{full_title}' uchun YouTube'da qidirilmoqda...")
-            youtube_url = await search_youtube_link(full_title)
-            if youtube_url:
+            youtube_results = await search_youtube_link(full_title)
+            if youtube_results:
                 youtube_source = "YouTube qidiruvi orqali topildi"
 
         logger.info(f"Song recognized: {full_title}")
-        if youtube_url:
+        if youtube_results:
             await status_message.edit_text(
                 f"🎶 Qo'shiq topildi: <b>{html.escape(full_title)}</b>\n<i>{youtube_source}</i>", parse_mode='HTML'
             )
-            song_id = str(uuid.uuid4())
-            context.bot_data[song_id] = {
-                'full_title': full_title,
-                'youtube_url': youtube_url
-            }
-            return InlineKeyboardMarkup([[ 
-                InlineKeyboardButton("🎵 Yuklab olish (Audio)", callback_data=f"dl_song_{song_id}")
-            ]])
+            # Bir nechta natija uchun tugmalar
+            buttons = []
+            for res in youtube_results[:3]:
+                song_id = str(uuid.uuid4())
+                context.bot_data[song_id] = {
+                    'full_title': res['title'],
+                    'youtube_url': res['link']
+                }
+                buttons.append([InlineKeyboardButton(f"🎵 Yuklab olish: {res['title'][:30]}", callback_data=f"dl_song_{song_id}")])
+            return InlineKeyboardMarkup(buttons)
         else:
             logger.warning(f"'{full_title}' uchun YouTube'dan havola topilmadi.")
             await status_message.reply_text(
