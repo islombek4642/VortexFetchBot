@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 
 from config import settings, logger
 from utils.helpers import _run_yt_dlp_with_progress, find_first_file
-from handlers.admin import _generate_stats_message_and_keyboard
+from handlers.general import _generate_stats_message_and_keyboard
 
 async def _handle_stats_pagination(query: CallbackQuery) -> None:
     """Handles the logic for stats pagination."""
