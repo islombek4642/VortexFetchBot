@@ -1,47 +1,45 @@
 
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 
 # --- Local Imports ---
-from config import TOKEN, logger
+from config import settings, logger
 import database
 
-# --- Handler Imports ---
-from handlers.general import start, help_command
-from handlers.admin import stats
-from handlers.downloader import download_video
-from handlers.callbacks import button
-from handlers.transcription import handle_media_for_transcription
+from handlers import general, callbacks
 
+async def post_init(application: Application) -> None:
+    """Post-initialization function to set bot commands."""
+    await application.bot.set_my_commands([
+        ('start', 'Botni ishga tushirish'),
+        ('help', 'Yordam'),
+        ('stats', 'Statistika (admin uchun)'),
+    ])
 
 def main() -> None:
-    """Start the bot."""
-    # Initialize the database
-    database.init_db()
-    
+    """Initializes and runs the bot."""
     logger.info("Bot is starting...")
 
+    # Setup environment (create folders, files) before anything else
+    settings.setup_environment()
+
     # Create the Application and pass it your bot's token.
-    application = ApplicationBuilder().token(TOKEN).build()
+    application = Application.builder().token(settings.TOKEN).post_init(post_init).build()
 
-    # === Command Handlers ===
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("stats", stats))
+    # Register command handlers
+    application.add_handler(CommandHandler("start", general.start))
+    application.add_handler(CommandHandler("help", general.help_command))
+    application.add_handler(CommandHandler("stats", general.stats_command))
 
-    # === Message Handlers ===
-    # For video links
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
-    # For audio/video/voice files for transcription
-    application.add_handler(MessageHandler(filters.AUDIO | filters.VIDEO | filters.VOICE, handle_media_for_transcription))
+    # Register message handlers for different types of content
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, general.handle_message))
+    application.add_handler(MessageHandler((filters.AUDIO | filters.VIDEO | filters.VOICE), general.handle_media))
 
-    # === Callback Query Handler ===
-    application.add_handler(CallbackQueryHandler(button))
+    # Register callback query handler for inline buttons
+    application.add_handler(CallbackQueryHandler(callbacks.button))
 
     # Run the bot until the user presses Ctrl-C
     logger.info("Bot has started successfully. Polling for updates...")
     application.run_polling()
 
-
 if __name__ == '__main__':
     main()
-

@@ -1,50 +1,76 @@
 import os
 import logging
+from wit import Wit
 import asyncio
-from faster_whisper import WhisperModel
 
 # Logging sozlamalari
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Modelni sozlash
-MODEL_SIZE = "base"
+# Wit.ai klientini sozlash
+# WIT_AI_TOKEN ni .env faylidan olish kerak
+WIT_AI_TOKEN = os.getenv("WIT_AI_TOKEN")
 
-try:
-    model = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
-    logger.info(f"Faster-Whisper modeli '{MODEL_SIZE}' muvaffaqiyatli yuklandi.")
-except Exception as e:
-    logger.error(f"Faster-Whisper modelini yuklashda xatolik: {e}", exc_info=True)
-    model = None
+if not WIT_AI_TOKEN:
+    logger.warning("WIT_AI_TOKEN muhit o'zgaruvchisi topilmadi. Transkripsiya funksiyasi ishlamaydi.")
+    client = None
+else:
+    try:
+        client = Wit(WIT_AI_TOKEN)
+        logger.info("Wit.ai klienti muvaffaqiyatli ishga tushirildi.")
+    except Exception as e:
+        logger.error(f"Wit.ai klientini ishga tushirishda xatolik: {e}")
+        client = None
 
-async def transcribe_audio_from_file(audio_path: str) -> tuple[str, str]:
+async def transcribe_audio_from_file(audio_path: str) -> str:
     """
-    Faster-Whisper yordamida audio faylni asinxron ravishda matnga o'giradi.
+    Wit.ai yordamida audio faylni asinxron ravishda matnga o'giradi.
+    Audio faylning to'liq yo'lini (path) qabul qiladi.
+    Transkripsiya qilingan matnni (string) qaytaradi.
     """
-    if not model:
-        return "n/a", "Xatolik: Transkripsiya modeli yuklanmagan."
+    if not client:
+        error_message = "Xatolik: Transkripsiya xizmati sozlanmagan (WIT_AI_TOKEN topilmadi)."
+        logger.error(error_message)
+        return error_message
 
     if not os.path.exists(audio_path):
-        logger.error(f"Audio fayl topilmadi: {audio_path}")
-        return "n/a", f"Xatolik: Audio fayl topilmadi: {audio_path}"
+        error_message = f"Xatolik: Audio fayl topilmadi: {audio_path}"
+        logger.error(error_message)
+        return error_message
 
     def sync_transcribe():
-        """Sinxron transkripsiya funksiyasi, alohida thread'da ishga tushirish uchun."""
-        segments, info = model.transcribe(audio_path, beam_size=5)
-        logger.info(f"Aniqlangan til: {info.language} ({info.language_probability:.2f} ehtimollik bilan)")
-        transcript_parts = [segment.text for segment in segments]
-        return info.language, " ".join(transcript_parts)
+        """Sinxron Wit.ai API so'rovini alohida thread'da ishga tushirish uchun funksiya."""
+        with open(audio_path, 'rb') as audio_file:
+            try:
+                # Wit.ai API ga audio yuborish
+                # Content-Type fayl formatiga qarab o'zgarishi mumkin.
+                # Eng keng tarqalgan formatlar uchun 'audio/mpeg' yoki 'audio/wav' ishlatiladi.
+                resp = client.speech(audio_file, {'Content-Type': 'audio/mpeg'})
+                
+                # Wit.ai javobidan matnni ajratib olish
+                transcript = resp.get('text') or resp.get('_text')
+                
+                if not transcript and isinstance(resp, list) and resp:
+                    # Ba'zi hollarda javob list ko'rinishida kelishi mumkin
+                    transcript = resp[-1].get('text') or resp[-1].get('_text')
+
+                return transcript if transcript else "Matn aniqlanmadi."
+            except Exception as e:
+                logger.error(f"Wit.ai API bilan ishlashda xatolik: {e}", exc_info=True)
+                return "Transkripsiya vaqtida API xatoligi yuz berdi."
 
     try:
         loop = asyncio.get_event_loop()
-        language, transcript = await loop.run_in_executor(None, sync_transcribe)
+        # Sinxron funksiyani asinxron kodda bloklamasdan ishlatish
+        transcript = await loop.run_in_executor(None, sync_transcribe)
         
-        if not transcript.strip():
+        if not transcript or not transcript.strip():
              logger.warning(f"'{audio_path}' faylidan matn aniqlanmadi.")
-             return language, "Matn aniqlanmadi."
+             return "Matn aniqlanmadi."
              
-        return language, transcript
+        logger.info(f"'{audio_path}' fayli muvaffaqiyatli transkripsiya qilindi.")
+        return transcript
         
     except Exception as e:
         logger.error(f"Transkripsiya vaqtida kutilmagan xatolik: {e}", exc_info=True)
-        return "n/a", "Transkripsiya vaqtida kutilmagan xatolik yuz berdi."
+        return "Transkripsiya vaqtida kutilmagan xatolik yuz berdi."
