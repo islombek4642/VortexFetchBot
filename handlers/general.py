@@ -10,6 +10,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constan
 from telegram.ext import ContextTypes
 from shazamio import Shazam
 from urllib.parse import urlparse, parse_qs
+from youtubesearchpython import VideosSearch
 
 from config import settings, logger
 from utils.decorators import register_user
@@ -99,26 +100,14 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 # --- Helper Functions (Business Logic) ---
 
-from pytube import Search
-
 async def search_youtube_link(query: str):
-    """YouTube'dan qo'shiq nomi bo'yicha birinchi videoni qidiradi."""
-    max_retries = 3
-    retry_delay = 2  # seconds
-    
-    for attempt in range(max_retries):
-        try:
-            search = Search(query)
-            if search.results:
-                return search.results[0].watch_url
-            break  # Success, break out of retry loop
-        except Exception as e:
-            if attempt == max_retries - 1:
-                logger.error(f"YouTube search failed after {max_retries} attempts: {e}")
-                return None
-            await asyncio.sleep(retry_delay)
-            retry_delay *= 1.5  # Exponential backoff
-            logger.warning(f"YouTube search attempt {attempt + 1} failed, retrying...")
+    try:
+        videos_search = VideosSearch(query, limit=1)
+        result = await asyncio.to_thread(videos_search.next)
+        if result and result.get('result'):
+            return result['result'][0]['link']
+    except Exception as e:
+        logger.error(f"YouTube search failed: {e}")
     return None
 
 
