@@ -157,12 +157,18 @@ async def _download_video_from_url(url: str, update: Update, context: ContextTyp
         if video_path and os.path.exists(video_path):
             os.remove(video_path)
 
-async def _recognize_and_offer_song_download(context: ContextTypes.DEFAULT_TYPE, status_message: Message, video_filepath: str, user_id: int, update_id: int) -> InlineKeyboardMarkup | None:
+async def _recognize_and_offer_song_download(
+    context: ContextTypes.DEFAULT_TYPE,
+    status_message: Message,
+    video_filepath: str,
+    user_id: int,
+    update_id: int
+) -> InlineKeyboardMarkup | None:
     """Extracts audio, recognizes a song, and offers a download if found."""
     logger.info("Recognizing song...")
     audio_path = None
     try:
-        # Musiqani aniqlash sifatini oshirish uchun audioni MP3 o'rniga WAV formatiga o'tkazamiz
+        # Audio ajratiladi
         audio_path = os.path.join(settings.DOWNLOAD_PATH, f"{user_id}_{update_id}_shazam.wav")
         await _run_ffmpeg_async(functools.partial(
             ffmpeg.input(video_filepath).output(
@@ -175,33 +181,49 @@ async def _recognize_and_offer_song_download(context: ContextTypes.DEFAULT_TYPE,
             overwrite_output=True, quiet=True
         ))
 
+        # Shazam yordamida aniqlash
         shazam = Shazam()
         recognition_result = await asyncio.wait_for(shazam.recognize(audio_path), timeout=30.0)
 
-        if track_info := recognition_result.get('track'):
-            subtitle = track_info.get('subtitle', "Noma'lum")
-            title = track_info.get('title', "Noma'lum")
-            full_title = f"{subtitle} - {title}"
-            
-            # Rasmiy musiqiy videoni topish uchun 'VIDEO' turidagi bo'limni qidiramiz
-            youtube_url = next((
-                section.get('youtubeurl') 
-                for section in track_info.get('sections', []) 
-                if section.get('type') == 'VIDEO' and section.get('youtubeurl')
-            ), None)
+        track_info = recognition_result.get('track')
+        if not track_info:
+            await status_message.edit_text("Qo'shiq topilmadi.")
+            return None
 
-            logger.info(f"Song recognized: {full_title}")
-            await status_message.edit_text(
-                f"🎶 Qo'shiq topildi: <b>{html.escape(full_title)}</b>", parse_mode='HTML'
-            )
+        subtitle = track_info.get('subtitle', "Noma'lum")
+        title = track_info.get('title', "Noma'lum")
+        full_title = f"{subtitle} - {title}"
 
+        # Youtube URL olish (VIDEO cheklovisiz)
+        youtube_url = next((
+            section.get('youtubeurl')
+            for section in track_info.get('sections', [])
+            if section.get('youtubeurl')
+        ), None)
+
+        logger.info(f"Song recognized: {full_title}")
+        await status_message.edit_text(
+            f"🎶 Qo'shiq topildi: <b>{html.escape(full_title)}</b>", parse_mode='HTML'
+        )
+
+        # Youtube URL mavjud bo‘lsa tugma chiqadi
+        if youtube_url:
             song_id = str(uuid.uuid4())
-            context.bot_data[song_id] = {'full_title': full_title, 'youtube_url': youtube_url}
-            
-            return InlineKeyboardMarkup([[
-                InlineKeyboardButton("🎵 Yuklab olish (Audio)", callback_data=f"dl_song_{song_id}")
-            ]])
-        return None
+            context.bot_data[song_id] = {
+                'full_title': full_title,
+                'youtube_url': youtube_url
+            }
+
+            return InlineKeyboardMarkup([[InlineKeyboardButton(
+                "🎵 Yuklab olish (Audio)", callback_data=f"dl_song_{song_id}"
+            )]])
+        else:
+            await status_message.reply_text(
+                f"<b>{html.escape(full_title)}</b> aniqlandi, ammo yuklab olish havolasi topilmadi.",
+                parse_mode='HTML'
+            )
+            return None
+
     except ffmpeg.Error as e:
         logger.error(f"ffmpeg error: {e.stderr.decode() if e.stderr else e}")
         await status_message.edit_text("Audioni ajratib olishda xatolik.")
@@ -215,6 +237,7 @@ async def _recognize_and_offer_song_download(context: ContextTypes.DEFAULT_TYPE,
         if audio_path and os.path.exists(audio_path):
             os.remove(audio_path)
     return None
+
 
 async def _transcribe_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Core logic to transcribe a media file."""
