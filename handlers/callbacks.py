@@ -50,17 +50,18 @@ async def _handle_song_download(query: CallbackQuery, context: ContextTypes.DEFA
     song_data = context.bot_data.get(song_id)
 
     if not song_data:
-        await query.edit_message_text("Bu yuklash havolasining muddati o'tgan yoki xato.")
+        await query.edit_message_caption(caption="Bu yuklash havolasining muddati o'tgan yoki xato.")
         return
 
     youtube_url = song_data.get('youtube_url')
     full_title = song_data.get('full_title')
 
     if not youtube_url:
-        await query.edit_message_text(f"<b>{html.escape(full_title)}</b> uchun yuklab olish havolasi topilmadi.", parse_mode='HTML')
+        await query.edit_message_caption(caption=f"<b>{html.escape(full_title)}</b> uchun yuklab olish havolasi topilmadi.", parse_mode='HTML')
         return
 
-    status_message = await query.edit_message_text(f"🎵 <b>{html.escape(full_title)}</b> yuklanmoqda...", parse_mode='HTML')
+    await query.edit_message_caption(caption=f"🎵 <b>{html.escape(full_title)}</b> yuklanmoqda...", parse_mode='HTML')
+    status_message = query.message # We use the original message for sending the audio file
     audio_path = None
     try:
         output_template = os.path.join(settings.DOWNLOAD_PATH, f'{user_id}_{song_id}_%(title)s.%(ext)s')
