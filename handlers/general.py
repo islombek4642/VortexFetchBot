@@ -241,7 +241,7 @@ async def _transcribe_media(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 await status_message.edit_text(full_text, parse_mode='Markdown')
 
     except ffmpeg.Error as e:
-        error_details = e.stderr.decode() if e.stderr else 'Noma\'lum xato'
+        error_details = e.stderr.decode() if e.stderr else "Noma'lum xato"
         logger.error(f"ffmpeg error during audio extraction: {error_details}")
         await status_message.edit_text(f"Videodan audioni ajratib olishda xatolik: {error_details[:100]}")
     except Exception as e:
