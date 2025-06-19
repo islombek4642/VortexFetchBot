@@ -120,7 +120,10 @@ async def _download_video_from_url(url: str, update: Update, context: ContextTyp
     try:
         output_template = os.path.join(settings.DOWNLOAD_PATH, f'{user_id}_{update.message.message_id}_%(title)s.%(ext)s')
         command = [
-            'yt-dlp', '-f', 'best', '--max-filesize', '1.8G',
+            'yt-dlp',
+            # Let yt-dlp choose the best quality by not specifying format
+            '--max-filesize', '1.8G',
+            '--merge-output-format', 'mp4',  # Ensure final output is mp4
             '-o', output_template, url
         ]
 
@@ -137,7 +140,8 @@ async def _download_video_from_url(url: str, update: Update, context: ContextTyp
 
         # YouTube cookies
         if ('youtube.com' in url or 'youtu.be' in url) and settings.YOUTUBE_COOKIES:
-            command.extend(['--cookies', settings.YOUTUBE_COOKIES])
+            # We use the path to the cookie file, not the content
+            command.extend(['--cookies', settings.COOKIE_FILE_PATH])
 
         return_code, stderr = await _run_yt_dlp_with_progress(command, status_message, "Yuklanmoqda...")
 
