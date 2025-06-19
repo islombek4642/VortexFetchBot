@@ -297,10 +297,6 @@ async def _recognize_and_offer_song_download(
             # Do not delete the audio file for debugging
             return None
 
-        subtitle = track_info.get('subtitle', "Noma'lum")
-        title = track_info.get('title', "Noma'lum")
-        full_title = f"{subtitle} - {title}"
-
         # Youtube URL olish (Shazamdan yoki qidiruvdan)
         youtube_url = next((
             section.get('youtubeurl')
@@ -308,28 +304,34 @@ async def _recognize_and_offer_song_download(
             if section.get('youtubeurl')
         ), None)
 
-        # Agar Shazamdan havola topilmasa — YouTube'dan qidiriladi
-        if not youtube_url:
-            logger.info(f"Shazam'dan YouTube havolasi topilmadi. '{full_title}' uchun qidirilmoqda...")
+        # Professional message logic
+        subtitle = track_info.get('subtitle', "Noma'lum")
+        title = track_info.get('title', "Noma'lum")
+        full_title = f"{subtitle} - {title}"
+        youtube_source = None
+
+        if youtube_url:
+            youtube_source = "Shazam orqali topildi"
+        else:
+            logger.info(f"Shazam'dan YouTube havolasi topilmadi. '{full_title}' uchun YouTube'da qidirilmoqda...")
             youtube_url = await search_youtube_link(full_title)
+            if youtube_url:
+                youtube_source = "YouTube qidiruvi orqali topildi"
 
         logger.info(f"Song recognized: {full_title}")
-        await status_message.edit_text(
-            f"🎶 Qo'shiq topildi: <b>{html.escape(full_title)}</b>", parse_mode='HTML'
-        )
-
-        # Agar havola topilgan bo'lsa, yuklab olish tugmasi ko'rsatiladi
         if youtube_url:
+            await status_message.edit_text(
+                f"🎶 Qo'shiq topildi: <b>{html.escape(full_title)}</b>\n<i>{youtube_source}</i>", parse_mode='HTML'
+            )
             song_id = str(uuid.uuid4())
             context.bot_data[song_id] = {
                 'full_title': full_title,
                 'youtube_url': youtube_url
             }
-            return InlineKeyboardMarkup([[
+            return InlineKeyboardMarkup([[ 
                 InlineKeyboardButton("🎵 Yuklab olish (Audio)", callback_data=f"dl_song_{song_id}")
             ]])
         else:
-            # Agar qidiruvdan keyin ham havola topilmasa
             logger.warning(f"'{full_title}' uchun YouTube'dan havola topilmadi.")
             await status_message.reply_text(
                 f"<b>{html.escape(full_title)}</b> aniqlandi, ammo yuklab olish uchun mos havola topilmadi.",
