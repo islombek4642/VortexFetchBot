@@ -3,6 +3,7 @@ import ffmpeg
 import html
 import uuid
 import functools
+import asyncio
 from typing import Optional
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -76,8 +77,14 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 caption=clean_caption,
                 reply_markup=inline_markup
             )
-        
-        await status_message.delete()
+
+        if inline_markup:
+            # If a button was generated, the status message already says "Song found".
+            # We can delete it as the button is the main feedback.
+            await status_message.delete()
+        # If no button, the status message contains the reason (e.g., "No song found" or an error).
+        # We leave it for the user to see, so we don't delete it.
+
         logger.info(f"Successfully sent video and cleaned up for: {video_path}")
 
     except Exception as e:
@@ -96,7 +103,8 @@ async def recognize_and_offer_song_download(context: ContextTypes.DEFAULT_TYPE, 
         await _run_ffmpeg_async(functools.partial(ffmpeg.input(video_filepath).output(audio_path, acodec='libmp3lame', ar='16000').run, overwrite_output=True, quiet=True))
 
         shazam = Shazam()
-        recognition_result = await shazam.recognize(audio_path)
+        logger.info("Recognizing with Shazam (30s timeout)...")
+        recognition_result = await asyncio.wait_for(shazam.recognize(audio_path), timeout=30.0)
 
         if recognition_result and recognition_result.get('track'):
             track_info = recognition_result['track']
@@ -124,6 +132,10 @@ async def recognize_and_offer_song_download(context: ContextTypes.DEFAULT_TYPE, 
     except ffmpeg.Error as e:
         logger.error(f"ffmpeg error during song recognition: {e.stderr.decode() if e.stderr else e}")
         await status_message.edit_text("Audioni ajratib olishda xatolik.")
+        return None
+    except asyncio.TimeoutError:
+        logger.warning(f"Shazam recognition timed out for video: {video_filepath}")
+        await status_message.edit_text("🎶 Qo'shiqni aniqlash vaqti tugadi. Iltimos, keyinroq qayta urinib ko'ring.")
         return None
     except Exception as e:
         logger.error(f"Error recognizing song: {e}", exc_info=True)
