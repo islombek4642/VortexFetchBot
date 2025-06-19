@@ -49,12 +49,18 @@ async def _handle_song_download(query: CallbackQuery, context: ContextTypes.DEFA
     song_id = query.data.replace('dl_song_', '')
     song_data = context.bot_data.get(song_id)
 
+    # Log for debugging
+    logger.info(f"Download button pressed: song_id={song_id}, song_data={song_data}")
+
     if not song_data:
         await query.edit_message_caption(caption="Bu yuklash havolasining muddati o'tgan yoki xato.")
         return
 
     youtube_url = song_data.get('youtube_url')
     full_title = song_data.get('full_title')
+
+    # Log for debugging
+    logger.info(f"Download requested: youtube_url={youtube_url}, full_title={full_title}")
 
     if not youtube_url:
         await query.edit_message_caption(caption=f"<b>{html.escape(full_title)}</b> uchun yuklab olish havolasi topilmadi.", parse_mode='HTML')
