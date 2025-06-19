@@ -183,10 +183,12 @@ async def _recognize_and_offer_song_download(context: ContextTypes.DEFAULT_TYPE,
             title = track_info.get('title', "Noma'lum")
             full_title = f"{subtitle} - {title}"
             
-            youtube_url = next(
-                (section.get('youtubeurl') for section in track_info.get('sections', []) if section.get('youtubeurl')),
-                None
-            )
+            # Rasmiy musiqiy videoni topish uchun 'VIDEO' turidagi bo'limni qidiramiz
+            youtube_url = next((
+                section.get('youtubeurl') 
+                for section in track_info.get('sections', []) 
+                if section.get('type') == 'VIDEO' and section.get('youtubeurl')
+            ), None)
 
             logger.info(f"Song recognized: {full_title}")
             await status_message.edit_text(
