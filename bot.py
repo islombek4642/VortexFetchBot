@@ -17,10 +17,10 @@ async def post_init(application: Application) -> None:
 
 def main() -> None:
     """Initializes and runs the bot."""
-    logger.info("Bot is starting...")
-
-    # Setup environment (create folders, files) before anything else
+    # Setup environment (create directories, cookie files, etc.) before anything else
     settings.setup_environment()
+
+    logger.info("Bot is starting...")
 
     # Create the Application and pass it your bot's token.
     application = Application.builder().token(settings.TOKEN).post_init(post_init).build()
