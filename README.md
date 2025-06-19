@@ -12,7 +12,7 @@
 
 -   **Video Yuklash:** Har qanday qo'llab-quvvatlanadigan platformadan havolani yuboring va videoni oling.
 -   **Musiqa Aniqlash:** Videodagi qo'shiqni bir zumda toping (`Shazam` integratsiyasi).
--   **Transkripsiya:** Audio, video yoki ovozli xabarlarni matnga o'giring (`Wit.ai` yordamida).
+-   **Transkripsiya:** Audio, video yoki ovozli xabarlarni matnga o'giring (`Whisper` yordamida).
 -   **Admin Paneli:** Bot foydalanuvchilari statistikasini kuzatib boring.
 -   **Keng Platforma Dastagi:** `yt-dlp` tufayli yuzlab veb-saytlarni qo'llab-quvvatlaydi.
 
@@ -22,7 +22,7 @@
 -   **Asosiy Freymvork:** `python-telegram-bot`
 -   **Video Yuklash:** `yt-dlp`
 -   **Musiqa Aniqlash:** `shazamio`
--   **Transkripsiya:** `wit.ai`
+-   **Transkripsiya:** `faster-whisper`
 -   **Audio Ishlov:** `ffmpeg-python`
 -   **Ma'lumotlar Bazasi:** `SQLite`
 
@@ -74,9 +74,6 @@ TELEGRAM_BOT_TOKEN="SIZNING_TELEGRAM_BOT_TOKENINGIZ"
 
 # Sizning shaxsiy Telegram ID raqamingiz (admin buyruqlari uchun)
 ADMIN_ID="SIZNING_TELEGRAM_ID"
-
-# Wit.ai platformasidan olingan Server Access Token (transkripsiya uchun)
-WIT_AI_TOKEN="SIZNING_WIT_AI_TOKENINGIZ"
 
 # (Ixtiyoriy) YouTube cheklovlarini chetlab o'tish uchun cookie fayli
 # Brauzeringizdan cookies.txt fayli tarkibini to'liq nusxalab joylashtiring

@@ -14,7 +14,7 @@ from urllib.parse import urlparse, parse_qs
 from config import settings, logger
 from utils.decorators import register_user
 from utils.helpers import find_first_file, _run_yt_dlp_with_progress, _run_ffmpeg_async
-from transcriber_whisper import transcribe_whisper_sync
+from transcriber_whisper import transcribe_whisper_sync, transcribe_whisper_stream, transcribe_whisper_full
 from database import db
 
 
@@ -337,7 +337,7 @@ async def _recognize_and_offer_song_download(
 
 
 async def _transcribe_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Core logic to transcribe a media file using Whisper only."""
+    """Core logic to transcribe a media file using Whisper only, with language auto-detection and chunking."""
     message = update.message
     user_id = message.from_user.id
     file_to_download = message.audio or message.video or message.voice
@@ -368,11 +368,15 @@ async def _transcribe_media(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
         await status_message.edit_text("Audio tahlil qilinmoqda (Whisper)...")
         loop = asyncio.get_event_loop()
-        transcript = await loop.run_in_executor(None, transcribe_whisper_sync, audio_path_to_transcribe)
+        transcript, detected_lang = await loop.run_in_executor(None, transcribe_whisper_full, audio_path_to_transcribe)
         if transcript and transcript.strip():
-            await status_message.edit_text("✅ **Transkripsiya yakunlandi!**\n---\n" + transcript, parse_mode='Markdown')
+            lang_text = f"\U0001F310 Aniqlangan til: <b>{detected_lang}</b>\n"
+            chunks = [transcript[i:i+4096] for i in range(0, len(transcript), 4096)]
+            await status_message.edit_text(lang_text + "\u2705 <b>Transkripsiya yakunlandi!</b>\n---\n" + chunks[0], parse_mode='HTML')
+            for chunk in chunks[1:]:
+                await update.message.reply_text(chunk, parse_mode='HTML')
         else:
-            await status_message.edit_text("❌ Transkripsiya natijasi topilmadi.")
+            await status_message.edit_text("\u274C Transkripsiya natijasi topilmadi.")
     except ffmpeg.Error as e:
         error_details = e.stderr.decode() if e.stderr else "Noma'lum xato"
         logger.error(f"ffmpeg error during audio extraction: {error_details}")

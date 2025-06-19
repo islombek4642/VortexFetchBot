@@ -22,7 +22,6 @@ class Config:
         # --- Bot Credentials & Settings ---
         self.TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
         self.ADMIN_ID_STR = os.getenv('ADMIN_ID')
-        self.WIT_AI_TOKEN = os.getenv('WIT_AI_TOKEN')
         self.ADMIN_ID = None
 
         # --- File Paths ---
