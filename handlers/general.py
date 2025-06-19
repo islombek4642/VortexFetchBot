@@ -15,6 +15,9 @@ from utils.helpers import find_first_file, _run_yt_dlp_with_progress, _run_ffmpe
 from transcriber import transcribe_audio_from_file
 from database import db
 
+from youtubesearchpython import VideosSearch
+
+
 # --- Command Handlers ---
 
 @register_user
@@ -95,6 +98,18 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await _transcribe_media(update, context)
 
 # --- Helper Functions (Business Logic) ---
+
+async def search_youtube_link(query: str) -> str | None:
+    """YouTube'dan qo‘shiq nomi bo‘yicha birinchi videoni qidiradi."""
+    try:
+        videos_search = VideosSearch(query, limit=1)
+        result = await videos_search.next()
+        if result['result']:
+            return result['result'][0]['link']
+    except Exception as e:
+        logger.error(f"YouTube qidiruvda xatolik: {e}", exc_info=True)
+    return None
+
 
 async def _download_video_from_url(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Core logic to download a video from a given URL."""
@@ -194,32 +209,38 @@ async def _recognize_and_offer_song_download(
         title = track_info.get('title', "Noma'lum")
         full_title = f"{subtitle} - {title}"
 
-        # Youtube URL olish (VIDEO cheklovisiz)
+        # Youtube URL olish (Shazamdan yoki qidiruvdan)
         youtube_url = next((
             section.get('youtubeurl')
             for section in track_info.get('sections', [])
             if section.get('youtubeurl')
         ), None)
 
+        # Agar Shazamdan havola topilmasa — YouTube'dan qidiriladi
+        if not youtube_url:
+            logger.info(f"Shazam'dan YouTube havolasi topilmadi. '{full_title}' uchun qidirilmoqda...")
+            youtube_url = await search_youtube_link(full_title)
+
         logger.info(f"Song recognized: {full_title}")
         await status_message.edit_text(
             f"🎶 Qo'shiq topildi: <b>{html.escape(full_title)}</b>", parse_mode='HTML'
         )
 
-        # Youtube URL mavjud bo‘lsa tugma chiqadi
+        # Agar havola topilgan bo'lsa, yuklab olish tugmasi ko'rsatiladi
         if youtube_url:
             song_id = str(uuid.uuid4())
             context.bot_data[song_id] = {
                 'full_title': full_title,
                 'youtube_url': youtube_url
             }
-
-            return InlineKeyboardMarkup([[InlineKeyboardButton(
-                "🎵 Yuklab olish (Audio)", callback_data=f"dl_song_{song_id}"
-            )]])
+            return InlineKeyboardMarkup([[
+                InlineKeyboardButton("🎵 Yuklab olish (Audio)", callback_data=f"dl_song_{song_id}")
+            ]])
         else:
+            # Agar qidiruvdan keyin ham havola topilmasa
+            logger.warning(f"'{full_title}' uchun YouTube'dan havola topilmadi.")
             await status_message.reply_text(
-                f"<b>{html.escape(full_title)}</b> aniqlandi, ammo yuklab olish havolasi topilmadi.",
+                f"<b>{html.escape(full_title)}</b> aniqlandi, ammo yuklab olish uchun mos havola topilmadi.",
                 parse_mode='HTML'
             )
             return None
