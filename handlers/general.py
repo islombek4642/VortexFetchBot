@@ -162,8 +162,18 @@ async def _recognize_and_offer_song_download(context: ContextTypes.DEFAULT_TYPE,
     logger.info("Recognizing song...")
     audio_path = None
     try:
-        audio_path = os.path.join(settings.DOWNLOAD_PATH, f"{user_id}_{update_id}_audio.mp3")
-        await _run_ffmpeg_async(functools.partial(ffmpeg.input(video_filepath).output(audio_path, acodec='libmp3lame', ar='16000').run, overwrite_output=True, quiet=True))
+        # Musiqani aniqlash sifatini oshirish uchun audioni MP3 o'rniga WAV formatiga o'tkazamiz
+        audio_path = os.path.join(settings.DOWNLOAD_PATH, f"{user_id}_{update_id}_shazam.wav")
+        await _run_ffmpeg_async(functools.partial(
+            ffmpeg.input(video_filepath).output(
+                audio_path,
+                format='wav',
+                acodec='pcm_s16le',
+                ac=1,
+                ar='44100'
+            ).run,
+            overwrite_output=True, quiet=True
+        ))
 
         shazam = Shazam()
         recognition_result = await asyncio.wait_for(shazam.recognize(audio_path), timeout=30.0)
