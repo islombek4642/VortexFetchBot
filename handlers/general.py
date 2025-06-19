@@ -102,9 +102,16 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def search_youtube_link(query: str):
     try:
-        videos_search = VideosSearch(query, limit=1)
+        videos_search = VideosSearch(query, limit=3)
         result = await asyncio.to_thread(videos_search.next)
         if result and result.get('result'):
+            # Try to find the most relevant result
+            for video in result['result']:
+                title = video.get('title', '').lower()
+                channel = video.get('channel', {}).get('name', '').lower()
+                if any(word in title for word in ['official', 'audio', 'topic']) or any(word in channel for word in ['official', 'audio', 'topic']):
+                    return video['link']
+            # If no good match, return the first result
             return result['result'][0]['link']
     except Exception as e:
         logger.error(f"YouTube search failed: {e}")
