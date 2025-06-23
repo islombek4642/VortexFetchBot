@@ -62,7 +62,21 @@ async def _handle_song_download(query: CallbackQuery, context: ContextTypes.DEFA
         await query.edit_message_text(f"<b>{html.escape(full_title)}</b> uchun yuklab olish havolasi topilmadi.", parse_mode='HTML')
         return
 
-    status_message = await query.edit_message_text(f"🎵 <b>{html.escape(full_title)}</b> yuklanmoqda...", parse_mode='HTML')
+    
+    # Determine whether to edit the message text or caption
+    text_to_send = f"🎵 <b>{html.escape(full_title)}</b> yuklanmoqda..."
+    if query.message.text:
+        status_message = await query.edit_message_text(text_to_send, parse_mode='HTML')
+    elif query.message.caption:
+        status_message = await query.edit_message_caption(caption=text_to_send, parse_mode='HTML')
+    else:
+        # Fallback for messages without text or caption (should be rare)
+        await query.message.delete()
+        status_message = await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=text_to_send,
+            parse_mode='HTML'
+        )
     audio_path = None
     try:
         output_template = os.path.join(settings.DOWNLOAD_PATH, f'{user_id}_{song_id}_%(title)s.%(ext)s')
