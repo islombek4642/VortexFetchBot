@@ -16,7 +16,7 @@ async def add_metadata_to_song(audio_path: str, title: str, artist: str):
         temp_output_path = audio_path + '.temp.mp3'
         await _run_ffmpeg_async(functools.partial(
             ffmpeg.input(audio_path)
-            .output(temp_output_path, metadata=f'title={title}', metadata=f'artist={artist}', codec='copy')
+            .output(temp_output_path, metadata=[f'title={title}', f'artist={artist}'], codec='copy')
             .run,
             overwrite_output=True, quiet=True
         ))
