@@ -4,7 +4,7 @@ from telegram import Update, CallbackQuery
 from telegram.ext import ContextTypes
 
 from config import settings, logger
-from utils.helpers import _run_yt_dlp_with_progress, find_first_file
+from utils.helpers import _run_yt_dlp_with_progress, find_first_file, add_metadata_to_song
 from handlers.general import _generate_stats_message_and_keyboard
 
 async def _handle_stats_pagination(query: CallbackQuery) -> None:
@@ -49,84 +49,83 @@ async def _handle_song_download(query: CallbackQuery, context: ContextTypes.DEFA
     song_id = query.data.replace('dl_song_', '')
     song_data = context.bot_data.get(song_id)
 
-    # Log for debugging
     logger.info(f"Download button pressed: song_id={song_id}, song_data={song_data}")
 
     if not song_data:
-        await query.edit_message_caption(caption="Bu yuklash havolasining muddati o'tgan yoki xato.")
+        await query.edit_message_text("Bu yuklash havolasining muddati o'tgan yoki xato.")
         return
 
     youtube_url = song_data.get('youtube_url')
-    full_title = song_data.get('full_title')
-
-    # Log for debugging
-    logger.info(f"Download requested: youtube_url={youtube_url}, full_title={full_title}")
+    full_title = song_data.get('full_title', "Noma'lum Qo'shiq")
 
     if not youtube_url:
-        await query.edit_message_caption(caption=f"<b>{html.escape(full_title)}</b> uchun yuklab olish havolasi topilmadi.", parse_mode='HTML')
+        await query.edit_message_text(f"<b>{html.escape(full_title)}</b> uchun yuklab olish havolasi topilmadi.", parse_mode='HTML')
         return
 
-    await query.edit_message_caption(caption=f"🎵 <b>{html.escape(full_title)}</b> yuklanmoqda...", parse_mode='HTML')
-    status_message = query.message # We use the original message for sending the audio file
+    status_message = await query.edit_message_text(f"🎵 <b>{html.escape(full_title)}</b> yuklanmoqda...", parse_mode='HTML')
     audio_path = None
     try:
         output_template = os.path.join(settings.DOWNLOAD_PATH, f'{user_id}_{song_id}_%(title)s.%(ext)s')
         command = [
             'yt-dlp',
-            '-x',
+            '--extract-audio', # Extract audio
             '--audio-format', 'mp3',
-            '--audio-quality', '0',
+            '--audio-quality', '0', # Best quality
             '-o', output_template,
-            '--max-filesize', '49m',
-            '--cookies', settings.YOUTUBE_COOKIE_FILE if settings.YOUTUBE_COOKIE_FILE else 'youtube_cookies.txt',
-            '--no-check-certificates',
-            '--geo-bypass',
+            '--max-filesize', f"{settings.MAX_FILE_SIZE_MB}m",
             '--no-playlist',
             '--ignore-errors',
-            '--extract-audio',
-            '--format', 'bestaudio',
+            '--no-check-certificates',
+            '--geo-bypass',
             youtube_url
         ]
-        return_code, stdout, stderr = await _run_yt_dlp_with_progress(command, status_message, f"🎵 <b>{html.escape(full_title)}</b> yuklanmoqda...")
+        
+        # Add cookies if specified in settings
+        if settings.YOUTUBE_COOKIE_FILE and os.path.exists(settings.YOUTUBE_COOKIE_FILE):
+            command.extend(['--cookies', settings.YOUTUBE_COOKIE_FILE])
 
-        # Improved error handling for YouTube anti-bot/login issues
+        return_code, stdout, stderr = await _run_yt_dlp_with_progress(command, query.message, f"🎵 <b>{html.escape(full_title)}</b> yuklanmoqda...")
+
         if ("Sign in to confirm" in stderr or "Signature extraction failed" in stderr):
-            await query.edit_message_caption(
-                caption=f"❌ <b>{html.escape(full_title)}</b> qo'shig'ini yuklab bo'lmadi. YouTube bu faylni faqat ro'yxatdan o'tgan foydalanuvchilarga ko'rsatmoqda yoki himoya o'rnatilgan.",
+            await query.edit_message_text(
+                f"❌ <b>{html.escape(full_title)}</b> qo'shig'ini yuklab bo'lmadi. YouTube himoyasi tufayli bu faylga kirish cheklangan.",
                 parse_mode='HTML'
             )
             return
 
         if return_code != 0:
             logger.error(f"Error downloading song {full_title}: {stderr}")
-            await query.edit_message_caption(
-                caption="❌ Qo'shiqni yuklashda xatolik.",
-                parse_mode='HTML'
-            )
+            await query.edit_message_text("❌ Qo'shiqni yuklashda xatolik.", parse_mode='HTML')
             return
 
         audio_path = find_first_file(settings.DOWNLOAD_PATH, f'{user_id}_{song_id}_')
         if not audio_path:
-            await query.edit_message_caption(
-                caption="❌ Yuklangan qo'shiq fayli topilmadi.",
-                parse_mode='HTML'
-            )
+            await query.edit_message_text("❌ Yuklangan qo'shiq fayli topilmadi.", parse_mode='HTML')
             return
+
+        # Add metadata
+        await query.edit_message_text(f"🎵 Metadata qo'shilmoqda...", parse_mode='HTML')
+        artist, title = (full_title.split(' - ', 1) + [full_title])[:2]
+        await add_metadata_to_song(audio_path, title, artist)
+
+        await query.edit_message_text(f"✅ <b>{html.escape(full_title)}</b> yuklandi! Yuborilmoqda...", parse_mode='HTML')
 
         with open(audio_path, 'rb') as audio_file:
             await context.bot.send_audio(
                 chat_id=query.message.chat_id,
                 audio=audio_file,
-                title=full_title,
-                caption="#VortexFetchBot"
+                title=title,
+                performer=artist,
+                caption=f"#VortexFetchBot | @{context.bot.username}"
             )
-        await status_message.delete()
+        await query.message.delete() # Delete the original status message
+
     except Exception as e:
         logger.error(f"Error processing song download: {e}", exc_info=True)
-        await query.edit_message_caption(
-            caption="Kutilmagan xatolik.",
-            parse_mode='HTML'
-        )
+        try:
+            await query.edit_message_text("Kutilmagan xatolik.", parse_mode='HTML')
+        except Exception as inner_e:
+            logger.error(f"Failed to send final error message: {inner_e}")
     finally:
         if audio_path and os.path.exists(audio_path):
             os.remove(audio_path)

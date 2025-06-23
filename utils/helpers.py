@@ -4,8 +4,28 @@ import time
 import asyncio
 from typing import Optional
 import functools
+import ffmpeg
 from telegram import Message
 from config import logger
+
+
+async def add_metadata_to_song(audio_path: str, title: str, artist: str):
+    """Adds title and artist metadata to an audio file using ffmpeg."""
+    logger.info(f"Adding metadata to {audio_path}: Title='{title}', Artist='{artist}'")
+    try:
+        temp_output_path = audio_path + '.temp.mp3'
+        await _run_ffmpeg_async(functools.partial(
+            ffmpeg.input(audio_path)
+            .output(temp_output_path, metadata=f'title={title}', metadata=f'artist={artist}', codec='copy')
+            .run,
+            overwrite_output=True, quiet=True
+        ))
+        os.replace(temp_output_path, audio_path)
+        logger.info(f"Successfully added metadata to {audio_path}")
+    except ffmpeg.Error as e:
+        logger.error(f"ffmpeg error while adding metadata to {audio_path}: {e.stderr.decode() if e.stderr else e}")
+    except Exception as e:
+        logger.error(f"Unexpected error adding metadata to {audio_path}: {e}", exc_info=True)
 
 def find_first_file(directory: str, prefix: str) -> Optional[str]:
     """Finds the first file in a directory that starts with a given prefix."""

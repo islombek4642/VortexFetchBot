@@ -255,6 +255,7 @@ async def _recognize_and_offer_song_download(
     """Extracts audio, recognizes a song, and offers a download if found."""
     logger.info("Recognizing song...")
     audio_path = None
+    delete_audio_file = True  # Default to deleting the file
     try:
         # Audio ajratiladi
         audio_path = os.path.join(settings.DOWNLOAD_PATH, f"{user_id}_{update_id}_shazam.wav")
@@ -271,12 +272,6 @@ async def _recognize_and_offer_song_download(
             overwrite_output=True, quiet=True
         ))
         logger.info(f"Audio extracted for Shazam: {audio_path}")
-        # Send the extracted audio to the user for debugging
-        try:
-            with open(audio_path, 'rb') as audio_file:
-                await status_message.reply_audio(audio=audio_file, caption="Ajratilgan audio (Shazam uchun)")
-        except Exception as e:
-            logger.warning(f"Could not send extracted audio: {e}")
 
         # Shazam yordamida aniqlash
         shazam = Shazam()
@@ -284,21 +279,25 @@ async def _recognize_and_offer_song_download(
             recognition_result = await asyncio.wait_for(shazam.recognize(audio_path), timeout=45.0)
         except Exception as e:
             logger.error(f"Shazam recognize error: {e}")
-            await status_message.edit_text("Shazam aniqlashda xatolik yoki timeout. Ajratilgan audio fayl downloads/ papkasida saqlanadi.")
+            await status_message.edit_text("Shazam aniqlashda xatolik yoki vaqt tugashi. Yordam uchun ajratilgan audio yuborilmoqda.")
+            delete_audio_file = False # Keep file for debugging
             return None
 
         track_info = recognition_result.get('track')
         if not track_info:
-            await status_message.edit_text("Qo'shiq topilmadi. Ajratilgan audio fayl downloads/ papkasida saqlanadi.")
+            await status_message.edit_text("Qo'shiq topilmadi. Yordam uchun ajratilgan audio yuborilmoqda.")
             logger.warning(f"No track found by Shazam for {audio_path}")
-            # Do not delete the audio file for debugging
+            delete_audio_file = False # Keep file for debugging
             return None
+
+        # On success, we don't need the local audio file anymore
+        delete_audio_file = True
 
         # Youtube URL olish (Shazamdan yoki qidiruvdan)
         youtube_url = next((
             section.get('youtubeurl')
             for section in track_info.get('sections', [])
-            if section.get('youtubeurl')
+            if section.get('type', '').upper() == 'VIDEO'
         ), None)
 
         subtitle = track_info.get('subtitle', "Noma'lum")
@@ -338,14 +337,26 @@ async def _recognize_and_offer_song_download(
     except ffmpeg.Error as e:
         logger.error(f"ffmpeg error: {e.stderr.decode() if e.stderr else e}")
         await status_message.edit_text("Audioni ajratib olishda xatolik.")
+        delete_audio_file = False
     except asyncio.TimeoutError:
         logger.warning(f"Shazam recognition timed out for {video_filepath}")
         await status_message.edit_text("Qo'shiqni aniqlash vaqti tugadi.")
+        delete_audio_file = False
     except Exception as e:
         logger.error(f"Error recognizing song: {e}", exc_info=True)
         await status_message.edit_text("Qo'shiqni aniqlashda xatolik.")
+        delete_audio_file = False
     finally:
-        if audio_path and os.path.exists(audio_path):
+        # Send the extracted audio to the user for debugging if we decided not to delete it
+        if not delete_audio_file and audio_path and os.path.exists(audio_path):
+            logger.info(f"Not deleting {audio_path} for debugging purposes.")
+            try:
+                with open(audio_path, 'rb') as audio_file:
+                    await status_message.reply_audio(audio=audio_file, caption="Aniqlash uchun ishlatilgan audio")
+            except Exception as e:
+                logger.warning(f"Could not send extracted audio for debugging: {e}")
+        elif delete_audio_file and audio_path and os.path.exists(audio_path):
+            logger.info(f"Deleting temporary audio file: {audio_path}")
             os.remove(audio_path)
     return None
 
