@@ -24,6 +24,9 @@ class Config:
         self.ADMIN_ID_STR = os.getenv('ADMIN_ID')
         self.ADMIN_ID = None
 
+        # --- Bot Behavior --- 
+        self.MAX_FILE_SIZE_MB = 49
+
         # --- File Paths ---
         self.DOWNLOAD_PATH = 'downloads'
         self.DB_FILE = "bot_users.db"

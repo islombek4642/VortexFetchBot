@@ -136,8 +136,12 @@ async def _handle_song_download(query: CallbackQuery, context: ContextTypes.DEFA
 
     except Exception as e:
         logger.error(f"Error processing song download: {e}", exc_info=True)
+        error_message = f"<b>Xatolik:</b>\n<code>{html.escape(str(e))}</code>"
         try:
-            await query.edit_message_text("Kutilmagan xatolik.", parse_mode='HTML')
+            if status_message.text:
+                await status_message.edit_text(error_message, parse_mode='HTML')
+            elif status_message.caption:
+                await status_message.edit_caption(caption=error_message, parse_mode='HTML')
         except Exception as inner_e:
             logger.error(f"Failed to send final error message: {inner_e}")
     finally:
